@@ -1,0 +1,46 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float2> VelocityInput; 
+Texture2D<float> VorticityInput; 
+RWTexture2D<float2> VelocityOutput;
+
+int2 Resolution;
+float VorticityStrength;
+float DeltaTime;
+float HalfInvDx; // 0.5 / dx ( dx = 1.0 / Resoution, 0.5 * Resolution)
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+    if (any(DTid.xy) >= (uint2) Resolution)
+    {
+        return;
+    }
+    
+    int2 Pos = int2(DTid.xy);
+    
+    float Left = abs(VorticityInput[clamp(Pos + int2(-1, 0), int2(0, 0), Resolution - 1)]);
+    float Right = abs(VorticityInput[clamp(Pos + int2(1, 0), int2(0, 0), Resolution - 1)]);
+    float Bottom = abs(VorticityInput[clamp(Pos + int2(0, 1), int2(0, 0), Resolution - 1)]);
+    float Top = abs(VorticityInput[clamp(Pos + int2(0, -1), int2(0, 0), Resolution - 1)]);
+    
+    // gradient of Curl
+    float2 GradCurl = float2(Right - Left, Top - Bottom) * HalfInvDx;
+    
+    // 정규화
+    float Len = length(GradCurl);
+    float2 N = (Len > 1e-5) ? (GradCurl / Len) : float2(0, 0);
+    
+    // 현재 셀의 curl 값
+    float Curl = VorticityInput[Pos];
+
+    // Confinement force = VorticityStrength * cross(N, curl)
+    // 2D에서 cross(N, curl스칼라) = float2(N.y, -N.x) * curl
+    float2 force = VorticityStrength * float2(N.y, -N.x) * Curl;
+
+    // velocity에 force 적용
+    float2 Vel = VelocityInput[Pos];
+    Vel += force * DeltaTime;
+
+    VelocityOutput[DTid.xy] = Vel;
+}

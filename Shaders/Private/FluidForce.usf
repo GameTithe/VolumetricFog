@@ -1,0 +1,46 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> DensityInput;
+Texture2D<float2> VelocityInput;
+RWTexture2D<float> DensityOutput;
+RWTexture2D<float2> VelocityOutput;
+
+float2 ForcePosition;   // UV Pos
+float2 ForceDirection;
+float ForceRadius;
+float ForceStrength;
+float DensityAmount;
+float DeltaTime;
+float Dissipation;  //밀도 감쇠
+
+float2 InvResolution;
+int2 Resolution;
+
+[numthreads(8,8,1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+    if (any(DTid.xy >= (int2) Resolution))
+    {
+        return;
+    }
+    
+    float2 UV = (float2(DTid.xy) + 0.5) * InvResolution;
+    
+    float2 Vel = VelocityInput[DTid.xy];
+    float Density = DensityInput[DTid.xy];
+
+    float Dist = length(UV - ForcePosition);
+    float Influence = exp(-(Dist * Dist) / (2.0 * ForceRadius * ForceRadius));
+    
+    // Velocity에 힘 추가
+    Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
+     
+    // Density에 소스 추가
+    Density += DensityAmount * Influence * DeltaTime;
+    
+    // Dissipation 추가
+    Density *= Dissipation;
+    
+    VelocityOutput[DTid.xy] = Vel;
+    DensityOutput[DTid.xy] = Density; 
+}

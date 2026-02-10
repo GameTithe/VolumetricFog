@@ -1,0 +1,30 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float2> VelocityInput; 
+RWTexture2D<float> VorticityOutput;
+
+int2 Resolution;
+float HalfInvDx; // 0.5 / dx ( dx = 1.0 / Resoution, 0.5 * Resolution)
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+    if (any(DTid.xy) >= (uint2) Resolution)
+    {
+        return;
+    }
+    
+    int2 Pos = int2(DTid.xy);
+    
+    float2 Left = VelocityInput[clamp(Pos + int2(-1, 0), int2(0, 0), Resolution - 1)];
+    float2 Right = VelocityInput[clamp(Pos + int2(1, 0), int2(0, 0), Resolution - 1)];
+    float2 Bottom = VelocityInput[clamp(Pos + int2(0, 1), int2(0, 0), Resolution - 1)];
+    float2 Top = VelocityInput[clamp(Pos + int2(0, -1), int2(0, 0), Resolution - 1)];
+
+    // 2D curl = dv/dx - du/dy
+    // (v = velocity.y, u = velocity.x)
+    float Curl = ((Right.y - Left.y) - (Top.x - Bottom.x)) * HalfInvDx;
+      
+    VorticityOutput[DTid.xy] = Curl;
+}
+

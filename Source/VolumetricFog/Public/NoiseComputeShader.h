@@ -17,6 +17,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters &Parameters)
 	{
+		//Shader Model 5.0 이상만 지원
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 

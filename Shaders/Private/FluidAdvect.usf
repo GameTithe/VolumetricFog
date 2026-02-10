@@ -1,0 +1,31 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float2> VelocityInput;
+Texture2D<float> DensityInput;
+RWTexture2D<float> DensityOutput;
+
+SamplerState BilinearSampler;
+
+float DeltaTime;
+float2 InvResolution;
+int2 Resolution;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+    if (any(DTid.xy >= (uint2) Resolution))
+    {
+        return;
+    }
+    
+    float2 UV = (float2(DTid.xy) + 0.5) * InvResolution;
+    
+    // 현재 위치 Velocity 읽기
+    float2 Vel = VelocityInput.SampleLevel(BilinearSampler, UV, 0);
+    
+    // 역추적한 위치에서의 값 가져오기
+    float2 PrevUV = UV - Vel * DeltaTime * InvResolution;
+    float Advected = DensityInput.SampleLevel(BilinearSampler, PrevUV, 0);
+    
+    DensityOutput[DTid.xy] = Advected;
+}

@@ -17,6 +17,7 @@ void UNoiseGenerateComponent::BeginPlay()
 	if (OutputRT)
 	{
 		OutputRT->bSupportsUAV = true;
+		OutputRT->bCanCreateUAV = true;
 		OutputRT->UpdateResourceImmediate(true);
 	}
 }
