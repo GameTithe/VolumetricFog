@@ -1,0 +1,54 @@
+#include "/Engine/Public/Platform.ush"
+
+float Time;
+RWTexture2D<float4> OutputTexture;
+
+float hash(float2 p)
+{
+	float3 p3 = frac(float3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	
+	return frac((p3.x + p3.y) * p3.z);
+}
+
+float noise2D(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+	
+    f = f * f * (3.0f - 2.0f * f);
+	
+    float a = hash(i); 
+    float b = hash(i + float2(1, 0));
+    float c = hash(i + float2(0, 1));
+    float d = hash(i + float2(1, 1));
+
+    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);  
+}
+
+float fbm(float2 p)
+{
+    float value = 0.0f;
+    float amplitude = 0.5f;
+    for (int i = 0; i < 5; ++i)
+    {
+        value += amplitude * noise2D(p);
+        p *= 2.0f;
+        
+        amplitude *= 0.5f;
+    }
+    
+    return value;
+}
+
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispathThreadId : SV_DispatchThreadID)
+{
+	float2 uv = float2(DispathThreadId.xy) / 512.0f;
+
+	// 시간에 따라 변하는 노이즈 
+	float n = fbm(uv * 8.0 + Time * 0.5);
+
+	OutputTexture[DispathThreadId.xy] = float4(n,n,n,1.0f);
+}

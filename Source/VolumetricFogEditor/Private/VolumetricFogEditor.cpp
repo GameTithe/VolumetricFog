@@ -5,4 +5,5 @@
 void FVolumetricFogEditorModule::StartupModule() {}
 void FVolumetricFogEditorModule::ShutdownModule() {}
 
-#undef LOCTEXT_NAMESPACE
+#undef LOCTEXT_NAMESPACE 
+IMPLEMENT_MODULE(FVolumetricFogEditorModule, VolumetricFogEditor)
