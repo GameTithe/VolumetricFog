@@ -1,7 +1,30 @@
-﻿#include "CoreMinimal.h"
+﻿#pragma once
+
+#include "CoreMinimal.h"
 #include "GlobalShader.h"
 #include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
+
+class FFluidAdvectVelocityCS : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FFluidAdvectVelocityCS);
+	SHADER_USE_PARAMETER_STRUCT(FFluidAdvectVelocityCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
+			SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+			SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
+			SHADER_PARAMETER(float, DeltaTime)
+			SHADER_PARAMETER(FVector2f, InvResolution)
+			SHADER_PARAMETER(FIntPoint, Resolution)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
 
 class FFluidAdvectCS : public FGlobalShader
 {
@@ -9,17 +32,17 @@ public:
 	DECLARE_GLOBAL_SHADER(FFluidAdvectCS);
 	SHADER_USE_PARAMETER_STRUCT(FFluidAdvectCS, FGlobalShader);
 
-	BEGIN_SHADER_PARAMETER_STRUCT(FFluidAdvectCS, )
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
-		SHDAER_PARAMETER_TEXTURE(Texture2D<float>, DensityInput)
-		SHDAER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
-		SHDAER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
+		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 		SHADER_PARAMETER(float, DeltaTime)
 		SHADER_PARAMETER(FVector2f, InvResolution)
-		SHADER_PARAMETER(FIntPoint, Resolution) 
+		SHADER_PARAMETER(FIntPoint, Resolution)
 	END_SHADER_PARAMETER_STRUCT()
 
-	static bool ShouldCompilePermutation(const FGlobalPermutationParameters& Parameters)
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
@@ -31,16 +54,16 @@ public:
 	DECLARE_GLOBAL_SHADER(FFluidDiffuseCS);
 	SHADER_USE_PARAMETER_STRUCT(FFluidDiffuseCS, FGlobalShader);
 
-	BEGIN_SHADER_PARAMTER_STRUCT()
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, InputTexture)
-		SHDAER_PARAMETER_TEXTURE(Texture2D<float>, PrevTexture)
-		SHDAER_PARAMETER_UAV(RWTexture2D<float>, OutputTexture)
-		SHADER_PARAMTER(float, Alpha)
-		SHADER_PARAMTER(float, InvBeta)
-		SHADER_PARAMTER(FIntPoint,  Resolution)
-	END_SHADER_PARAMTER_STRUCT()
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Texture2D<float>, InputTexture)
+		SHADER_PARAMETER_SRV(Texture2D<float>, PrevTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<float>, OutputTexture)
+		SHADER_PARAMETER(float, Alpha)
+		SHADER_PARAMETER(float, InvBeta)
+		SHADER_PARAMETER(FIntPoint, Resolution)
+	END_SHADER_PARAMETER_STRUCT()
 
-		static bool ShouldCompilePermutation(const FGlobalPermutationParameters& Parameters)
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
@@ -48,12 +71,14 @@ public:
 
 class FFluidForceCS : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FFluidForceCS, FGlobalShader);
+public:
+	
+	DECLARE_GLOBAL_SHADER(FFluidForceCS);
 	SHADER_USE_PARAMETER_STRUCT(FFluidForceCS, FGlobalShader);
 
-	BEGIN_SHADER_PARAMETER_STRUCT()
-		SHADER_PARAMETER_TEXTURE(Texture2D<float>, DensityInput)
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
 		SHADER_PARAMETER(FVector2f, ForcePosition)
@@ -65,8 +90,8 @@ class FFluidForceCS : public FGlobalShader
 		SHADER_PARAMETER(float, Dissipation)
 		SHADER_PARAMETER(FVector2f, InvResolution)
 		SHADER_PARAMETER(FIntPoint, Resolution)
-	END_SHADER_PARAMETER_STRUCT() 
-	 
+	END_SHADER_PARAMETER_STRUCT()
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
@@ -81,7 +106,7 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidDivergenceCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float>, DivergenceOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
@@ -100,8 +125,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidGradientSubtractCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_TEXTURE(Texture2D<float>, PressureInput)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float>, PressureInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
@@ -120,7 +145,7 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidVorticityCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float>, VorticityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
@@ -139,8 +164,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidVorticityForceCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_TEXTURE(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_TEXTURE(Texture2D<float>, VorticityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_SRV(Texture2D<float>, VorticityInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, VorticityStrength)

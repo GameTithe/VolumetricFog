@@ -9,7 +9,7 @@ float HalfInvDx; // 0.5 / dx ( dx = 1.0 / Resoution, 0.5 * Resolution)
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DTid : SV_DispatchThreadID)
 {
-    if (any(DTid.xy) >= (uint2) Resolution)
+    if (any(DTid.xy >= (uint2) Resolution))
     {
         return;
     }

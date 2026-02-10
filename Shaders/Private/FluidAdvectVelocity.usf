@@ -1,0 +1,28 @@
+﻿#include "/Engine/Public/Platform.ush"
+
+Texture2D<float2> VelocityInput;
+RWTexture2D<float2> VelocityOutput;
+
+SamplerState BilinearSampler;
+
+float DeltaTime;
+float2 InvResolution;
+int2 Resolution;
+
+[numthreads(8,8,1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{	
+	if (any(DTid.xy >= (uint2) Resolution))
+	{
+		return;
+	}
+
+	float2 UV = (float2(DTid.xy) + 0.5) * InvResolution;
+
+	float2 Vel = VelocityInput.SampleLevel(BilinearSampler, UV, 0);
+
+	float2 PrevUV = UV - Vel * DeltaTime * InvResolution;
+	float2 Advected = VelocityInput.SampleLevel(BilinearSampler, PrevUV, 0);
+
+	VelocityOutput[DTid.xy] = Advected;
+}
