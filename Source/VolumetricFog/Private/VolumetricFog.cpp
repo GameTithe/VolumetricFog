@@ -25,6 +25,6 @@ void FVolumetricFogModule::ShutdownModule()
 	// we call this function before unloading the module.
 }
 
-#undef LOCTEXT_NAMESPACE
+#undef LOCTEXT_NAMESPACE	
 	
 IMPLEMENT_MODULE(FVolumetricFogModule, VolumetricFog)
