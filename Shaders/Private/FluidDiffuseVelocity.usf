@@ -1,0 +1,33 @@
+﻿#include "/Engine/Public/Platform.ush"
+
+Texture2D<float2> InputTexture;
+Texture2D<float2> PrevTexture;
+RWTexture2D<float2> OutputTexture;
+
+float Alpha;
+float InvBeta;
+int2 Resolution;
+
+[numthreads(8,8,1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+	if (any(DTid.xy >= (int2) Resolution))
+	{
+		return;
+	}
+    
+	int2 pos = int2(DTid.xy);
+    
+	// 4개 이웃 Sampling
+	float2 Left = InputTexture[clamp(pos + int2(-1, 0), int2(0, 0), Resolution - 1)];
+	float2 Right = InputTexture[clamp(pos + int2(1, 0), int2(0, 0), Resolution - 1)];
+	float2 Top = InputTexture[clamp(pos + int2(0, -1), int2(0, 0), Resolution - 1)];
+	float2 Bottom = InputTexture[clamp(pos + int2(0, 1), int2(0, 0), Resolution - 1)];
+    
+	float2 Previous = PrevTexture[pos];
+    
+	// Jacobi Iteration: new = (sum_neighbors + Alpha * b ) / beta
+	float2 Result = (Left + Right + Top + Bottom + Alpha * Previous) * InvBeta;
+    
+	OutputTexture[DTid.xy] = Result;
+}

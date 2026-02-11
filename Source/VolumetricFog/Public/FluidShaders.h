@@ -69,6 +69,28 @@ public:
 	}
 };
 
+
+class FFluidDiffuseVelocityCS : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FFluidDiffuseVelocityCS);
+	SHADER_USE_PARAMETER_STRUCT(FFluidDiffuseVelocityCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Texture2D<float2>, InputTexture)
+		SHADER_PARAMETER_SRV(Texture2D<float2>, PrevTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<float2>, OutputTexture)
+		SHADER_PARAMETER(float, Alpha)
+		SHADER_PARAMETER(float, InvBeta)
+		SHADER_PARAMETER(FIntPoint, Resolution)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
 class FFluidForceCS : public FGlobalShader
 {
 public:

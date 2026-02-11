@@ -14,6 +14,7 @@ struct FFluidResources
 	FTextureRHIRef Pressure[2];
 	FTextureRHIRef Divergence; 
 	FTextureRHIRef Vorticity;
+	FTextureRHIRef TempVelocity;
 
 	int32 Resolution = 0;
 	bool bInitialize = false;
@@ -64,6 +65,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "1", ClampMax = "100"))
 	int32 PressureIterations = 20;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.0"))
+	float Viscosity = 0.001f;
+	
 private:
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;
 
@@ -86,6 +90,7 @@ private:
 	 	float InDensityAmount,
 	 	float InDissipation,
 	 	float InVorticityStrength,
+	 	float InVisc,
 	 	int32 InPressureIterations,
 	 	// 반환용
 	 	int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex
