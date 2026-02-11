@@ -23,7 +23,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 
     // 2D curl = dv/dx - du/dy
     // (v = velocity.y, u = velocity.x)
-    float Curl = ((Right.y - Left.y) - (Top.x - Bottom.x)) * HalfInvDx;
+        float Curl = ((Right.y - Left.y) - (Bottom.x - Top.x)) * HalfInvDx;
       
     VorticityOutput[DTid.xy] = Curl;
 }

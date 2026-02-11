@@ -25,7 +25,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     float Top = abs(VorticityInput[clamp(Pos + int2(0, -1), int2(0, 0), Resolution - 1)]);
     
     // gradient of Curl
-    float2 GradCurl = float2(Right - Left, Top - Bottom) * HalfInvDx;
+    float2 GradCurl = float2(Right - Left, Bottom - Top) * HalfInvDx;
     
     // 정규화
     float Len = length(GradCurl);
@@ -36,7 +36,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 
     // Confinement force = VorticityStrength * cross(N, curl)
     // 2D에서 cross(N, curl스칼라) = float2(N.y, -N.x) * curl
-    float2 force = VorticityStrength * float2(N.y, -N.x) * Curl;
+    float2 force = VorticityStrength * float2(-N.y, N.x) * Curl;
 
     // velocity에 force 적용
     float2 Vel = VelocityInput[Pos];
