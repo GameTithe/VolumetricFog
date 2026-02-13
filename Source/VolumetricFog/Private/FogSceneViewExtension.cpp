@@ -29,22 +29,20 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !VelocityRHI)
+	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT)
 	{
 		return;
 	}
-	
+
 	FRDGBuilder& GraphBuilder = *InParameters.GraphBuilder;
 	const FViewInfo& View = *InParameters.View;
-	
+
 	FRDGTextureRef SceneColor = InParameters.ColorTexture;
 	FRDGTextureRef SceneDepth = InParameters.DepthTexture;
-	
-	//Render Target을 RDG에 등록 
-	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(
-		CreateRenderTarget(DensityRHI, TEXT("FogDensity")));
-	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(
-		CreateRenderTarget(VelocityRHI, TEXT("FogVelocity")));
+
+	// 캐싱된 PooledRT를 RDG에 등록
+	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
+	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT);
 	
 	// Shader Params 
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();

@@ -86,8 +86,22 @@ public:
 	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
 
 	// 외부에서 Render Thread 호출
-	void SetDensityRHI(FTextureRHIRef InTex) { DensityRHI = InTex;}
-	void SetVelocityRHI(FTextureRHIRef InTex) { VelocityRHI = InTex;}
+	void SetDensityRHI(FTextureRHIRef InTex)
+	{
+		if (DensityRHI != InTex)
+		{
+			DensityRHI = InTex;
+			DensityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogDensity")) : nullptr;
+		}
+	}
+	void SetVelocityRHI(FTextureRHIRef InTex)
+	{
+		if (VelocityRHI != InTex)
+		{
+			VelocityRHI = InTex;
+			VelocityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogVelocity")) : nullptr;
+		}
+	}
 	
 	bool bEnable = false;
 	
@@ -118,6 +132,9 @@ private:
 
 	FTextureRHIRef DensityRHI;
 	FTextureRHIRef VelocityRHI;
+
+	TRefCountPtr<IPooledRenderTarget> DensityPooledRT;
+	TRefCountPtr<IPooledRenderTarget> VelocityPooledRT;
 
 	FDelegateHandle PostOpaqueDelegateHandle;
 };
