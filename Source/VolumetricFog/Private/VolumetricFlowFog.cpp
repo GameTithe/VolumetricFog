@@ -1,14 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "VolumetricFog.h"
+#include "VolumetricFlowFog.h"
 
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 
-#define LOCTEXT_NAMESPACE "FVolumetricFogModule"
+#define LOCTEXT_NAMESPACE "FVolumetricFlowFogModule"
 
-void FVolumetricFogModule::StartupModule()
+void FVolumetricFlowFogModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module 
 	FString PluginShaderDir = FPaths::Combine(
@@ -19,7 +19,7 @@ void FVolumetricFogModule::StartupModule()
 	AddShaderSourceDirectoryMapping(TEXT("/VolumetricFog") /* Virtaul Shader Path */, PluginShaderDir/* Real Shader Path */);
 }
 
-void FVolumetricFogModule::ShutdownModule()
+void FVolumetricFlowFogModule::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
@@ -27,4 +27,4 @@ void FVolumetricFogModule::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE	
 	
-IMPLEMENT_MODULE(FVolumetricFogModule, VolumetricFog)
+IMPLEMENT_MODULE(FVolumetricFlowFogModule, VolumetricFog)

@@ -1,0 +1,66 @@
+// ── 3D hash noise (curl의 입력용) ──
+float hash31(float3 p)
+{
+    p = frac(p * float3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return frac((p.x + p.y) * p.z);
+}
+
+float GradientNoise3D(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float n000 = hash31(i);
+    float n100 = hash31(i + float3(1, 0, 0));
+    float n010 = hash31(i + float3(0, 1, 0));
+    float n110 = hash31(i + float3(1, 1, 0));
+    float n001 = hash31(i + float3(0, 0, 1));
+    float n101 = hash31(i + float3(1, 0, 1));
+    float n011 = hash31(i + float3(0, 1, 1));
+    float n111 = hash31(i + float3(1, 1, 1));
+
+    float n00 = lerp(n000, n100, f.x);
+    float n01 = lerp(n001, n101, f.x);
+    float n10 = lerp(n010, n110, f.x);
+    float n11 = lerp(n011, n111, f.x);
+    float n0 = lerp(n00, n10, f.y);
+    float n1 = lerp(n01, n11, f.y);
+
+    return lerp(n0, n1, f.z);
+}
+
+
+  // ── 3D Curl Noise ──
+  // 3개의 독립 noise field에 curl(∇×) 연산 적용
+  // → divergence-free 벡터장 출력 (유체처럼 흐르는 소용돌이)
+  //
+  // 왜 curl인가:
+  //   일반 noise로 좌표를 왜곡하면 밀도가 뭉치거나 빈 구멍이 생김
+  //   curl noise는 "발산 없음" 이므로 밀도 보존, 자연스러운 소용돌이
+  //
+  // 비용: GradientNoise3D 12회 호출 (3 field × 2 축 × ±ε)
+float3 CurlNoise3D(float3 p)
+{
+    const float e = 0.01;
+    
+     float3 off1 = float3(0, 0, 0);
+    float3 off2 = float3(31.416, 47.853, 12.679);
+    float3 off3 = float3(63.712, 19.247, 85.361);
+
+     float n1_dy = (GradientNoise3D(p + off1 + float3(0, e, 0)) - GradientNoise3D(p + off1 - float3(0, e, 0))) / (2 * e);
+    float n1_dz = (GradientNoise3D(p + off1 + float3(0, 0, e)) - GradientNoise3D(p + off1 - float3(0, 0, e))) / (2 * e);
+
+    float n2_dx = (GradientNoise3D(p + off2 + float3(e, 0, 0)) - GradientNoise3D(p + off2 - float3(e, 0, 0))) / (2 * e);
+    float n2_dz = (GradientNoise3D(p + off2 + float3(0, 0, e)) - GradientNoise3D(p + off2 - float3(0, 0, e))) / (2 * e);
+
+    float n3_dx = (GradientNoise3D(p + off3 + float3(e, 0, 0)) - GradientNoise3D(p + off3 - float3(e, 0, 0))) / (2 * e);
+    float n3_dy = (GradientNoise3D(p + off3 + float3(0, e, 0)) - GradientNoise3D(p + off3 - float3(0, e, 0))) / (2 * e);
+
+     return float3(
+          n3_dy - n2_dz, // curl.x
+          n1_dz - n3_dx, // curl.y
+          n2_dx - n1_dy // curl.z
+      );
+}

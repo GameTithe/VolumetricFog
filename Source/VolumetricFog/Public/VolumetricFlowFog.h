@@ -4,7 +4,7 @@
 
 #include "Modules/ModuleManager.h"
 
-class FVolumetricFogModule : public IModuleInterface
+class FVolumetricFlowFogModule : public IModuleInterface
 {
 public:
 

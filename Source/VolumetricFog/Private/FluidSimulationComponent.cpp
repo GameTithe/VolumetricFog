@@ -87,6 +87,11 @@ void UFluidSimulationComponent::BeginPlay()
 		OutputRT->InitCustomFormat(SimResolution, SimResolution, PF_R32_FLOAT, true);
 		OutputRT->UpdateResourceImmediate(true);
 	}
+	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
+	FogExtension->bEnable = bEnableFog;
+	FogExtension->SimulationCenter =
+	FVector3f(GetOwner()->GetActorLocation());
+	FogExtension->SimulationSize = SimulationWorldSize;
 }
 
 
@@ -151,6 +156,48 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	}
 	);
 	
+	AccumulatedTime += DeltaTime;
+
+	if (FogExtension)
+	{
+		FogExtension->bEnable              = bEnableFog;
+		FogExtension->AccumulatedTime      = AccumulatedTime;
+		FogExtension->SimulationCenter     =
+	FVector3f(GetOwner()->GetActorLocation());
+		FogExtension->SimulationSize       = SimulationWorldSize;
+		FogExtension->FogBaseHeight        = FogBaseHeight;
+		FogExtension->FogMaxHeight         = FogMaxHeight;
+		FogExtension->HeightFalloff        = HeightFalloff;
+		FogExtension->FogDensityMultiplier = FogDensityMultiplier;
+		FogExtension->Absorption           = Absorption;
+		FogExtension->FogColor             = FVector3f(FogColor.R,
+	FogColor.G, FogColor.B);
+		FogExtension->NumSteps             = NumSteps;
+		FogExtension->MaxRayDistance       = MaxRayDistance;
+		FogExtension->CurlNoiseScale       = CurlNoiseScale;
+		FogExtension->CurlNoiseSpeed       = CurlNoiseSpeed;
+		FogExtension->CurlDistortStrength  = CurlDistortStrength;
+		FogExtension->VelocityDistortStrength = VelocityDistortStrength;
+		FogExtension->BaseNoiseScale       = BaseNoiseScale;
+
+		// 렌더스레드에 Density/Velocity 텍스처 전달
+		auto Ext = FogExtension;
+		auto Res = FluidResources;
+		int32 CurDen = DenIndex;
+		int32 CurVel = VelIndex;
+
+		ENQUEUE_RENDER_COMMAND(FUpdateFogTextures)(
+			[Ext, Res, CurDen, CurVel](FRHICommandListImmediate&
+	RHICmdList)
+			{
+				if (Res->bInitialize)
+				{
+					Ext->SetDensityRHI(Res->Density[CurDen]);
+					Ext->SetVelocityRHI(Res->Velocity[CurVel]);
+				}
+			}
+		);
+	}
 }
  
  void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
@@ -479,13 +526,18 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	 OutVelIndex = CurVelIdx;
  	 OutDenIndex = CurDenIdx;
  	 OutPresIndex = CurPresIdx;
-
-  
-
+ 
  }
   
 void UFluidSimulationComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	FluidResources.Reset();
+	
+	if (FogExtension)
+	{
+		FogExtension->bEnable = false;
+		FogExtension.Reset();
+	}
+	
 }

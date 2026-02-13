@@ -1,0 +1,97 @@
+#include "/Engine/Public/Platform.ush"
+#include "/VolumetricFog/Rendering/CurlNoise.ush"
+
+// Scene Textures
+Texture2D SceneColorTexture;
+Texture2D SceneDepthTexture;
+SamplerState SceneColorSampler;
+SamplerState SceneDepthSampler;
+
+// Stable Fluid Results
+Texture2D DensityTexture;
+Texture2D VelocityTexture;
+SamplerState BilinearSampler;
+
+// Camera
+float4x4 InvViewProjectionMatrix;
+float3 CameraPosition;
+float2 ViewportSize;
+
+// Fog Parameters
+float FogBaseHeight;
+float FogMaxHeight;
+float HeightFalloff;
+float FogDensityMultiplier;
+float Absorption;
+float3 FogColor;
+int NumSteps;
+float MaxRayDistance;
+
+// Curl Noise
+float CurlNoiseScale;
+float CurlNoiseSpeed;
+float CurlDistortStrength;
+float VelocityDistortStrength;
+float BaseNoiseScale;
+float Time;
+
+// Simulation Bouning Box
+float3 SimulationCenter;
+float SimulationSize;
+
+// 스크린 UV -> 월드 방향 벡터 생성
+// Depth Buffer에서 실제 위치를 복원하는 함수
+float3 ReconstructWorldDir(float2 UV)
+{
+    // UV to NDC
+    float2 NDC = UV * 2.f - 1.0f;
+    NDC.y = -NDC.y;
+     
+    float4 WorldFar = mul(float4(NDC, 1.0f, 1.0f), InvViewProjectionMatrix);
+    WorldFar.xyz /= WorldFar.w;
+
+    return normalize(WorldFar.xyz - CameraPosition);
+}
+
+// 월드 XY -> 시뮬레이션 UV로 변환
+float2 WorldToSimulationUV(float2 WorldXY)
+{
+    float2 LocalXY = WorldXY - SimulationCenter.xy;
+    float HalfSize = SimulationSize * 0.5f;
+    return ((LocalXY + HalfSize) / SimulationSize)  * float2(1, -1);
+}
+
+// Scene Depth -> 선형 카메라 거리 변환
+float GetLinearSceneDepth(float2 UV)
+{
+    // [0, 1]
+    float SceneDepth = SceneDepthTexture.Sample(SceneDepthSampler, UV).r;
+    
+    // Clip Space 
+    float4 ClipSpacePosition;
+    ClipSpacePosition.xy = UV * 2.0f - 1.0f;
+    ClipSpacePosition.y = -ClipSpacePosition.y;
+    ClipSpacePosition.z = SceneDepth;
+    ClipSpacePosition.w = 1.0f;
+    
+    float4 WorldPosition = mul(ClipSpacePosition, InvViewProjectionMatrix);
+    
+    WorldPosition.xyz /= WorldPosition.w;
+    
+    return length(WorldPosition.xyz - CameraPosition);
+}
+// dithered offset을 생성하는 noise 함수 
+float InterleavedGradientNoise(float2 screenPos)
+{
+    float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
+    return frac(magic.z * frac(dot(screenPos, magic.xy)));
+}
+
+void MainPS(
+    in float4 SvPosition : SV_Position,
+    out float4 OutColor : SV_Target0
+)
+{
+    //TODO
+    OutColor = float4(0.2, 0.5, 0.1, 1.0f);
+}

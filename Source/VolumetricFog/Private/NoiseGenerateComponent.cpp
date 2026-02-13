@@ -4,6 +4,8 @@
 #include "RenderGraphUtils.h"
 #include "RHICommandList.h"
 #include "GlobalShader.h"
+#include "RHI.h"
+#include "RHIResources.h"
 
 UNoiseGenerateComponent::UNoiseGenerateComponent()
 {
@@ -59,7 +61,7 @@ void UNoiseGenerateComponent::ExectureNoiseShaderByRenderThread(FRHICommandListI
 	check(IsInRenderingThread());
 
 	// UAV 생성
-	FTexture2DRHIRef TextureRHI = RTResource->GetRenderTargetTexture();
+	FTextureRHIRef TextureRHI = RTResource->GetRenderTargetTexture();
 	if (!TextureRHI)
 	{
 		return;

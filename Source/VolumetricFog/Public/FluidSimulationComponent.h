@@ -3,8 +3,8 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "FogSceneViewExtension.h"
 #include "FluidSimulationComponent.generated.h"
-
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -68,9 +68,62 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.0"))
 	float Viscosity = 0.001f;
 	
+	
+	// Fog Rendering
+	// ======== Fog Rendering ========
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	bool bEnableFog = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	float FogBaseHeight = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	float FogMaxHeight = 500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	float HeightFalloff = 200.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
+	(ClampMin = "0.0"))
+	float FogDensityMultiplier = 2.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
+	(ClampMin = "0.0"))
+	float Absorption = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	FLinearColor FogColor = FLinearColor(0.8f, 0.85f, 0.9f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
+	(ClampMin = "8", ClampMax = "128"))
+	int32 NumSteps = 64;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	float MaxRayDistance = 5000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlNoiseScale = 0.003f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlNoiseSpeed = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
+	float CurlDistortStrength = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
+	float VelocityDistortStrength = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float BaseNoiseScale = 0.01f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	float SimulationWorldSize = 5000.f;
 private:
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;
-
+	
+	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> FogExtension;
+	float AccumulatedTime = 0.f;
+	
 	// ping-pong Index
 	int32 VelIndex = 0;
 	int32 DenIndex = 0;

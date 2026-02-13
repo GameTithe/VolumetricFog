@@ -18,7 +18,9 @@ public class VolumetricFog : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				// ... add other private include paths required here ...
-			}
+				System.IO.Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Private"),
+				System.IO.Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Internal"),
+            }
 			);
 			
 		
