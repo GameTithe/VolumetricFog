@@ -36,23 +36,38 @@ void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
 	Vorticity = CreateUAVTexForCS(TEXT("FluidVorticity"), PF_R32_FLOAT);
 
 	TempVelocity = CreateUAVTexForCS(TEXT("FluidTempVelocity"), PF_G32R32F);
-	auto ClearTex = [&](FTextureRHIRef& Tex)
-	{
-		FUnorderedAccessViewRHIRef UAV = RHICmdList.CreateUnorderedAccessView(Tex, 0);
-		RHICmdList.ClearUAVFloat(UAV, FVector4f(0, 0, 0, 0));
-	};
+	// SRV/UAV 캐싱
+	VelocitySRV[0] = RHICmdList.CreateShaderResourceView(Velocity[0], 0);
+	VelocitySRV[1] = RHICmdList.CreateShaderResourceView(Velocity[1], 0);
+	DensitySRV[0]  = RHICmdList.CreateShaderResourceView(Density[0], 0);
+	DensitySRV[1]  = RHICmdList.CreateShaderResourceView(Density[1], 0);
+	PressureSRV[0] = RHICmdList.CreateShaderResourceView(Pressure[0], 0);
+	PressureSRV[1] = RHICmdList.CreateShaderResourceView(Pressure[1], 0);
+	DivergenceSRV  = RHICmdList.CreateShaderResourceView(Divergence, 0);
+	VorticitySRV   = RHICmdList.CreateShaderResourceView(Vorticity, 0);
+	TempVelocitySRV = RHICmdList.CreateShaderResourceView(TempVelocity, 0);
 
-	ClearTex(Velocity[0]);
-	ClearTex(Velocity[1]);
-	ClearTex(Density[0]);
-	ClearTex(Density[1]);
-	ClearTex(Pressure[0]);
-	ClearTex(Pressure[1]);
-	ClearTex(Divergence);
-	ClearTex(Vorticity);
-	ClearTex(TempVelocity);
+	VelocityUAV[0] = RHICmdList.CreateUnorderedAccessView(Velocity[0], 0);
+	VelocityUAV[1] = RHICmdList.CreateUnorderedAccessView(Velocity[1], 0);
+	DensityUAV[0]  = RHICmdList.CreateUnorderedAccessView(Density[0], 0);
+	DensityUAV[1]  = RHICmdList.CreateUnorderedAccessView(Density[1], 0);
+	PressureUAV[0] = RHICmdList.CreateUnorderedAccessView(Pressure[0], 0);
+	PressureUAV[1] = RHICmdList.CreateUnorderedAccessView(Pressure[1], 0);
+	DivergenceUAV  = RHICmdList.CreateUnorderedAccessView(Divergence, 0);
+	VorticityUAV   = RHICmdList.CreateUnorderedAccessView(Vorticity, 0);
+	TempVelocityUAV = RHICmdList.CreateUnorderedAccessView(TempVelocity, 0);
 
-	
+	// 캐싱된 UAV로 클리어
+	RHICmdList.ClearUAVFloat(VelocityUAV[0], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(VelocityUAV[1], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(DensityUAV[0], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(DensityUAV[1], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(PressureUAV[0], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(PressureUAV[1], FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(DivergenceUAV, FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(VorticityUAV, FVector4f(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(TempVelocityUAV, FVector4f(0, 0, 0, 0));
+
 	bInitialize = true;
 }
 
@@ -241,15 +256,6 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	 	RHICmdList.Transition(FRHITransitionInfo(Tex, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
  	 };
  	
- 	 auto MakeSRV = [&](FRHITexture* Tex) {
- 	 	return RHICmdList.CreateShaderResourceView(Tex, 0);
- 	 };
- 	
- 	 auto MakeUAV = [&](FRHITexture* Tex)
- 	 {
- 	 	return RHICmdList.CreateUnorderedAccessView(Tex, 0);
- 	 };
- 	
  	 int CurVelIdx = InVelIndex;
  	 int CurDenIdx = InDenIndex;
  	 int CurPresIdx = InPresIndex;
@@ -263,8 +269,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 	TShaderMapRef<FFluidAdvectVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 	FFluidAdvectVelocityCS::FParameters Params;
- 	 	Params.VelocityInput = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
- 	 	Params.VelocityOutput = MakeUAV(InFluidResources->Velocity[NextVelIdx]);
+ 	 	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
+ 	 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
  	 	Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
  	 	Params.DeltaTime = DeltaTime;
  	 	Params.InvResolution  = InvResolution;
@@ -282,7 +288,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	  //	TShaderMapRef<FFluidVorticityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	  //	FFluidVorticityCS::FParameters Params;
       //
- 	  //	Params.VelocityInput = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
+ 	  //	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
  	  //	Params.VorticityOutput = MakeUAV(InFluidResources->Vorticity);
  	  //	Params.Resolution = ResolutionPt;
  	  //	Params.HalfInvDx = HalfInvDx;
@@ -300,9 +306,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	  //	TShaderMapRef<FFluidVorticityForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	  //	FFluidVorticityForceCS::FParameters Params;
       //
- 	  //	Params.VelocityInput = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
+ 	  //	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
  	  //	Params.VorticityInput = MakeSRV(InFluidResources->Vorticity);
- 	  //	Params.VelocityOutput = MakeUAV(InFluidResources->Velocity[NextVelIdx]);
+ 	  //	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
  	  //	Params.Resolution = ResolutionPt;
  	  //	Params.VorticityStrength = InVorticityStrength;
  	  //	Params.DeltaTime = DeltaTime;
@@ -335,9 +341,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 
 	    		TShaderMapRef<FFluidDiffuseVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	    		FFluidDiffuseVelocityCS::FParameters Params;
-	    		Params.InputTexture  = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
-	    		Params.PrevTexture   = MakeSRV(InFluidResources->TempVelocity);
-	    		Params.OutputTexture = MakeUAV(InFluidResources->Velocity[NextVelIdx]);
+	    		Params.InputTexture  = InFluidResources->VelocitySRV[CurVelIdx];
+	    		Params.PrevTexture   = InFluidResources->TempVelocitySRV;
+	    		Params.OutputTexture = InFluidResources->VelocityUAV[NextVelIdx];
 	    		Params.Alpha         = ViscAlpha;
 	    		Params.InvBeta       = ViscInvBeta;
 	    		Params.Resolution    = ResolutionPt;
@@ -357,10 +363,10 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 	TShaderMapRef<FFluidForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 	FFluidForceCS::FParameters Params;
- 	 	Params.VelocityInput  = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
- 	 	Params.DensityInput   = MakeSRV(InFluidResources->Density[CurDenIdx]);
- 	 	Params.VelocityOutput = MakeUAV(InFluidResources->Velocity[NextVelIdx]);
- 	 	Params.DensityOutput  = MakeUAV(InFluidResources->Density[NextDenIdx]);
+ 	 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+ 	 	Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
+ 	 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
+ 	 	Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
  	 	Params.ForcePosition  = InForcePosition;
  	 	Params.ForceDirection = InForceDirection;
  	 	Params.ForceRadius    = InForceRadius;
@@ -383,8 +389,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 	TShaderMapRef<FFluidDivergenceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 	FFluidDivergenceCS::FParameters Params;
- 	 	Params.VelocityInput    = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
- 	 	Params.DivergenceOutput = MakeUAV(InFluidResources->Divergence);
+ 	 	Params.VelocityInput    = InFluidResources->VelocitySRV[CurVelIdx];
+ 	 	Params.DivergenceOutput = InFluidResources->DivergenceUAV;
  	 	Params.Resolution       = ResolutionPt;
  	 	Params.HalfInvDx        = HalfInvDx;
   
@@ -395,12 +401,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	 {
 
  		 {
- 		 	FUnorderedAccessViewRHIRef PressureUAV0 = RHICmdList.CreateUnorderedAccessView(
- 				 InFluidResources->Pressure[0], 0);
- 		 	FUnorderedAccessViewRHIRef PressureUAV1 = RHICmdList.CreateUnorderedAccessView(
- 				 InFluidResources->Pressure[1], 0);
- 		 	RHICmdList.ClearUAVFloat(PressureUAV0, FVector4f(0, 0, 0, 0));
- 		 	RHICmdList.ClearUAVFloat(PressureUAV1, FVector4f(0, 0, 0, 0));
+ 		 	RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[0], FVector4f(0, 0, 0, 0));
+ 		 	RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[1], FVector4f(0, 0, 0, 0));
  		 }
  	 	CurPresIdx = 0;
  	 	
@@ -417,9 +419,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 		FFluidDiffuseCS::FParameters Params;
- 	 		Params.InputTexture  = MakeSRV(InFluidResources->Pressure[CurPresIdx]);
- 	 		Params.PrevTexture   = MakeSRV(InFluidResources->Divergence);
- 	 		Params.OutputTexture = MakeUAV(InFluidResources->Pressure[NextPresIdx]);
+ 	 		Params.InputTexture  = InFluidResources->PressureSRV[CurPresIdx];
+ 	 		Params.PrevTexture   = InFluidResources->DivergenceSRV;
+ 	 		Params.OutputTexture = InFluidResources->PressureUAV[NextPresIdx];
  	 		Params.Alpha         = Alpha;
  	 		Params.InvBeta       = InvBeta;
  	 		Params.Resolution    = ResolutionPt;
@@ -438,9 +440,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 	TShaderMapRef<FFluidGradientSubtractCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 	FFluidGradientSubtractCS::FParameters Params;
- 	 	Params.VelocityInput  = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
- 	 	Params.PressureInput  = MakeSRV(InFluidResources->Pressure[CurPresIdx]);
- 	 	Params.VelocityOutput = MakeUAV(InFluidResources->Velocity[NextVelIdx]);
+ 	 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+ 	 	Params.PressureInput  = InFluidResources->PressureSRV[CurPresIdx];
+ 	 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
  	 	Params.Resolution     = ResolutionPt;
  	 	Params.HalfInvDx      = HalfInvDx;
   
@@ -475,9 +477,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 
  	 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 		FFluidDiffuseCS::FParameters Params;
- 	 		Params.InputTexture  = MakeSRV(InFluidResources->Density[CurDenIdx]);   // 이웃 (현재 추정)
- 	 		Params.PrevTexture   = MakeSRV(InFluidResources->Divergence);           // 원본 밀도 (b)
- 	 		Params.OutputTexture = MakeUAV(InFluidResources->Density[NextDenIdx]);
+ 	 		Params.InputTexture  = InFluidResources->DensitySRV[CurDenIdx];   // 이웃 (현재 추정)
+ 	 		Params.PrevTexture   = InFluidResources->DivergenceSRV;           // 원본 밀도 (b)
+ 	 		Params.OutputTexture = InFluidResources->DensityUAV[NextDenIdx];
  	 		Params.Alpha         = DiffAlpha;
  	 		Params.InvBeta       = DiffInvBeta;
  	 		Params.Resolution    = ResolutionPt;
@@ -495,9 +497,9 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
   
  	 	TShaderMapRef<FFluidAdvectCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
  	 	FFluidAdvectCS::FParameters Params;
- 	 	Params.VelocityInput  = MakeSRV(InFluidResources->Velocity[CurVelIdx]);
- 	 	Params.DensityInput   = MakeSRV(InFluidResources->Density[CurDenIdx]);
- 	 	Params.DensityOutput  = MakeUAV(InFluidResources->Density[NextDenIdx]);
+ 	 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+ 	 	Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
+ 	 	Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
  	 	Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
  	 	Params.DeltaTime      = DeltaTime;
  	 	Params.InvResolution  = InvResolution;

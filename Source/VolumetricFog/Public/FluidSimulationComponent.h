@@ -12,9 +12,23 @@ struct FFluidResources
 	FTextureRHIRef Velocity[2];
 	FTextureRHIRef Density[2];
 	FTextureRHIRef Pressure[2];
-	FTextureRHIRef Divergence; 
+	FTextureRHIRef Divergence;
 	FTextureRHIRef Vorticity;
 	FTextureRHIRef TempVelocity;
+
+	FShaderResourceViewRHIRef VelocitySRV[2];
+	FShaderResourceViewRHIRef DensitySRV[2];
+	FShaderResourceViewRHIRef PressureSRV[2];
+	FShaderResourceViewRHIRef DivergenceSRV;
+	FShaderResourceViewRHIRef VorticitySRV;
+	FShaderResourceViewRHIRef TempVelocitySRV;
+
+	FUnorderedAccessViewRHIRef VelocityUAV[2];
+	FUnorderedAccessViewRHIRef DensityUAV[2];
+	FUnorderedAccessViewRHIRef PressureUAV[2];
+	FUnorderedAccessViewRHIRef DivergenceUAV;
+	FUnorderedAccessViewRHIRef VorticityUAV;
+	FUnorderedAccessViewRHIRef TempVelocityUAV;
 
 	int32 Resolution = 0;
 	bool bInitialize = false;
