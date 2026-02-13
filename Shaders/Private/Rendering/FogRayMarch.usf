@@ -92,6 +92,37 @@ void MainPS(
     out float4 OutColor : SV_Target0
 )
 {
-    //TODO
+    float2 UV = SvPosition.xy / ViewportSize;
+    
+    float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, UV);
+    
+    // 픽셀의 월드 방향과 씬 깊이 구하기
+    float3 WorldDir = ReconstructWorldDir(UV);
+    float SceneDepth = GetLinearSceneDepth(UV);
+    
+    // 시뮬레이션 볼륨
+    float HalfSize = SimulationSize * 0.5f;
+    float3 BoxMin = SimulationCenter - HalfSize;
+    float3 BoxMax = SimulationCenter + HalfSize;
+    
+    // P = O + t * dx
+    // ( P - O ) / dx = t
+    float3 InvDir = 1.0f / WorldDir;
+    float3 T0 = (BoxMin - CameraPosition) * InvDir;
+    float3 T1 = (BoxMax - CameraPosition) * InvDir;
+    
+    float3 TMin = min(T0, T1);
+    float3 TMax = max(T0, T1);
+    
+    float tEntry = max(max(TMin.x, TMin.y), TMin.z);
+    float tExit = min(min(TMax.x, TMax.y), TMax.z);
+    
+    if (tEntry > tExit || tExit < 0.0f || tEntry > SceneDepth)
+    {
+        // 시뮬레이션 볼륨 밖
+        OutColor = SceneColor;
+        return;
+    }
+    
     OutColor = float4(0.2, 0.5, 0.1, 1.0f);
 }

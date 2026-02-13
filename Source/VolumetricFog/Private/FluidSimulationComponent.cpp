@@ -104,9 +104,17 @@ void UFluidSimulationComponent::BeginPlay()
 	}
 	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
 	FogExtension->bEnable = bEnableFog;
-	FogExtension->SimulationCenter =
-	FVector3f(GetOwner()->GetActorLocation());
-	FogExtension->SimulationSize = SimulationWorldSize;
+
+    FVector BoundsOrigin, BoundsExtent;
+    GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
+
+    FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
+
+    const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
+    FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
+      
+    //FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
+	//FogExtension->SimulationSize = SimulationWorldSize;
 }
 
 
@@ -176,17 +184,13 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	if (FogExtension)
 	{
 		FogExtension->bEnable              = bEnableFog;
-		FogExtension->AccumulatedTime      = AccumulatedTime;
-		FogExtension->SimulationCenter     =
-	FVector3f(GetOwner()->GetActorLocation());
-		FogExtension->SimulationSize       = SimulationWorldSize;
+		FogExtension->AccumulatedTime      = AccumulatedTime;  
 		FogExtension->FogBaseHeight        = FogBaseHeight;
 		FogExtension->FogMaxHeight         = FogMaxHeight;
 		FogExtension->HeightFalloff        = HeightFalloff;
 		FogExtension->FogDensityMultiplier = FogDensityMultiplier;
 		FogExtension->Absorption           = Absorption;
-		FogExtension->FogColor             = FVector3f(FogColor.R,
-	FogColor.G, FogColor.B);
+		FogExtension->FogColor             = FVector3f(FogColor.R, FogColor.G, FogColor.B);
 		FogExtension->NumSteps             = NumSteps;
 		FogExtension->MaxRayDistance       = MaxRayDistance;
 		FogExtension->CurlNoiseScale       = CurlNoiseScale;
@@ -194,6 +198,15 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		FogExtension->CurlDistortStrength  = CurlDistortStrength;
 		FogExtension->VelocityDistortStrength = VelocityDistortStrength;
 		FogExtension->BaseNoiseScale       = BaseNoiseScale;
+
+        FVector BoundsOrigin, BoundsExtent;
+        GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
+
+        FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
+
+        const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
+        FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
+
 
 		// 렌더스레드에 Density/Velocity 텍스처 전달
 		auto Ext = FogExtension;
