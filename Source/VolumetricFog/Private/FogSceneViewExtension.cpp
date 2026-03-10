@@ -29,7 +29,7 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT)
+	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT || !CurlNoisePooledRT)
 	{
 		return;
 	}
@@ -42,30 +42,26 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 
 	// 캐싱된 PooledRT를 RDG에 등록
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
-	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT);
-	
+	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT); 
+	FRDGTextureRef CurlNoiseRDG = GraphBuilder.RegisterExternalTexture(CurlNoisePooledRT);
+	 
 	// Shader Params 
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();
 	Params->SceneColorTexture = SceneColor;
 	Params->SceneDepthTexture = SceneDepth;
-	Params->SceneColorSampler =
-TStaticSamplerState<SF_Bilinear>::GetRHI();
-	Params->SceneDepthSampler =
-TStaticSamplerState<SF_Point>::GetRHI();
+	Params->CurlNoiseTexture = CurlNoiseRDG;
+
+	Params->SceneColorSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+	Params->SceneDepthSampler = TStaticSamplerState<SF_Point>::GetRHI();
+	Params->CurlNoiseSampler = TStaticSamplerState< SF_Bilinear>::GetRHI();
 
 	Params->DensityTexture  = DensityRDG;
 	Params->VelocityTexture = VelocityRDG;
-	Params->BilinearSampler = TStaticSamplerState<SF_Bilinear,
-AM_Clamp, AM_Clamp>::GetRHI();
+	Params->BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp>::GetRHI();
 
-	Params->InvViewProjectionMatrix =
-FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
-	Params->CameraPosition =
-FVector3f(View.ViewMatrices.GetViewOrigin());
-	Params->ViewportSize   =
-FVector2f(InParameters.ViewportRect.Width(),
-
-InParameters.ViewportRect.Height());
+	Params->InvViewProjectionMatrix = FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
+	Params->CameraPosition = FVector3f(View.ViewMatrices.GetViewOrigin());
+	Params->ViewportSize   = FVector2f(InParameters.ViewportRect.Width(), InParameters.ViewportRect.Height());
 
 	Params->FogBaseHeight        = FogBaseHeight;
 	Params->FogMaxHeight         = FogMaxHeight;
@@ -76,12 +72,17 @@ InParameters.ViewportRect.Height());
 	Params->NumSteps             = NumSteps;
 	Params->MaxRayDistance       = MaxRayDistance;
 
+	Params->CurlTexScale = CurlTexScale;
+	Params->CurlTexSpeed = CurlTexSpeed;
+	Params->CurlTexStrength = CurlTexStrength;
+
 	Params->CurlNoiseScale         = CurlNoiseScale;
 	Params->CurlNoiseSpeed         = CurlNoiseSpeed;
 	Params->CurlDistortStrength    = CurlDistortStrength;
 	Params->VelocityDistortStrength = VelocityDistortStrength;
 	Params->BaseNoiseScale         = BaseNoiseScale;
 	Params->Time                   = AccumulatedTime;
+
 
 	Params->SimulationCenter = SimulationCenter;
 	Params->SimulationSize   = SimulationSize;

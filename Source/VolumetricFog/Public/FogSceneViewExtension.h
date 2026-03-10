@@ -14,10 +14,13 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFogRayMarchingPS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
+
         SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
         SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
+        SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
 
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
@@ -42,6 +45,11 @@ public:
         SHADER_PARAMETER(float, VelocityDistortStrength)
         SHADER_PARAMETER(float, BaseNoiseScale)
         SHADER_PARAMETER(float, Time)
+
+		SHADER_PARAMETER(float, CurlTexScale)
+		SHADER_PARAMETER(float, CurlTexSpeed)
+		SHADER_PARAMETER(float, CurlTexStrength)
+
 
         SHADER_PARAMETER(FVector3f, SimulationCenter)
         SHADER_PARAMETER(float, SimulationSize)
@@ -102,6 +110,14 @@ public:
 			VelocityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogVelocity")) : nullptr;
 		}
 	}
+	void SetCurlNoiseRHI(FTextureRHIRef InTex)
+	{
+		if (CurlNoiseRHI != InTex)
+		{
+			CurlNoiseRHI = InTex;
+			CurlNoisePooledRT = InTex ? CreateRenderTarget(InTex, TEXT("CurlNoise")) : nullptr;
+		}
+	}
 	
 	bool bEnable = false;
 	
@@ -114,8 +130,7 @@ public:
 	FVector3f FogColor        = FVector3f(0.8f, 0.85f, 0.9f);
 	int32 NumSteps            = 64;
 	float MaxRayDistance       = 5000.f;
-	
-	
+	 
 	// Curl Noise Parameters 
 	float CurlNoiseScale         = 0.003f;
 	float CurlNoiseSpeed         = 0.1f;
@@ -124,6 +139,10 @@ public:
 	float BaseNoiseScale         = 0.01f;
 	float AccumulatedTime        = 0.f;
 	
+	float CurlTexScale = 0.006f;
+	float CurlTexSpeed = 0.12f;
+	float CurlTexStrength = 40.0f;
+
 	FVector3f SimulationCenter	= FVector3f::ZeroVector;
 	float SimulationSize = 5000.f;
 	
@@ -137,4 +156,9 @@ private:
 	TRefCountPtr<IPooledRenderTarget> VelocityPooledRT;
 
 	FDelegateHandle PostOpaqueDelegateHandle;
+	 
+	// Curl Noise Using Texture
+	FTextureRHIRef CurlNoiseRHI;
+	TRefCountPtr<IPooledRenderTarget> CurlNoisePooledRT;
+
 };

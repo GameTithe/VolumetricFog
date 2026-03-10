@@ -1,11 +1,14 @@
 #include "/Engine/Public/Platform.ush"
-#include "/VolumetricFog/Rendering/CurlNoise.ush"
+//#include "/VolumetricFog/Rendering/CurlNoise.ush"
 
 // Scene Textures
 Texture2D SceneColorTexture;
 Texture2D SceneDepthTexture;
+Texture2D CurlNoiseTexture;
+
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
+SamplerState CurlNoiseSampler;
 
 // Stable Fluid Results
 Texture2D DensityTexture;
@@ -35,6 +38,11 @@ float VelocityDistortStrength;
 float BaseNoiseScale;
 float Time;
 
+// Curl Noise Texture
+float CurlTexScale;
+float CurlTexSpeed;
+float CurlTexStrength;
+
 // Simulation Bouning Box
 float3 SimulationCenter;
 float SimulationSize;
@@ -54,12 +62,42 @@ float3 ReconstructWorldDir(float2 UV)
 }
 
 // 월드 XY -> 시뮬레이션 UV로 변환
+//float2 WorldToSimulationUV(float2 WorldXY)
+//{
+//    float2 LocalXY = WorldXY - SimulationCenter.xy;
+//    float HalfSize = SimulationSize * 0.5f;
+//   return ((LocalXY + HalfSize) / SimulationSize)  * float2(1, -1); 
+//}
+ 
 float2 WorldToSimulationUV(float2 WorldXY)
 {
     float2 LocalXY = WorldXY - SimulationCenter.xy;
-    float HalfSize = SimulationSize * 0.5f;
-    return ((LocalXY + HalfSize) / SimulationSize)  * float2(1, -1);
+    float SimSize = max(SimulationSize, 1e-3);
+    float HalfSize = SimSize * 0.5f;
+
+    float2 UV = (LocalXY + HalfSize) / SimSize;
+    UV.y = 1.0f - UV.y; // Y flip
+    return UV;
 }
+
+
+//float3 ReconstructWorldPos(float2 UV, float DeviceDepth)
+//{
+//    float2 NDC;
+//    NDC.x = UV.x * 2.0f - 1.0f;
+//    NDC.y = 1.0f - UV.y * 2.0f; // Y flip
+//
+//    float4 Clip = float4(NDC, DeviceDepth, 1.0f);
+//    float4 World = mul(Clip, InvViewProjectionMatrix);
+//    World.xyz /= max(World.w, 1e-6f);
+//    return World.xyz;
+//}
+//float GetLinearSceneDepth(float2 UV)
+//{
+//    float DeviceDepth = SceneDepthTexture.Sample(SceneDepthSampler, UV).r;
+//    float3 WorldPos = ReconstructWorldPos(UV, DeviceDepth);
+//    return length(WorldPos - CameraPosition);
+//}
 
 // Scene Depth -> 선형 카메라 거리 변환
 float GetLinearSceneDepth(float2 UV)
@@ -79,7 +117,7 @@ float GetLinearSceneDepth(float2 UV)
     WorldPosition.xyz /= WorldPosition.w;
     
     return length(WorldPosition.xyz - CameraPosition);
-}
+} 
 // dithered offset을 생성하는 noise 함수 
 float InterleavedGradientNoise(float2 screenPos)
 {
@@ -87,42 +125,225 @@ float InterleavedGradientNoise(float2 screenPos)
     return frac(magic.z * frac(dot(screenPos, magic.xy)));
 }
 
+bool RayBoxIntersect(float3 RayOrigin, float3 RayDir, float3 BoxMin, float3 BoxMax, out float tEntry, out float tExit)
+{
+    float3 SafeDir = RayDir;
+        
+    SafeDir.x = (abs(SafeDir.x) < 1e-6f) ? (SafeDir.x >= 0 ? 1e-6f : -1e-6f) : SafeDir.x;
+    SafeDir.y = (abs(SafeDir.y) < 1e-6f) ? (SafeDir.y >= 0 ? 1e-6f : -1e-6f) : SafeDir.y;
+    SafeDir.z = (abs(SafeDir.z) < 1e-6f) ? (SafeDir.z >= 0 ? 1e-6f : -1e-6f) : SafeDir.z;
+    
+    // P = O + t * dx
+    // ( P - O ) / dx = t
+    float3 InvDir = 1.0f / SafeDir;
+    float3 T0 = (BoxMin - RayOrigin) * InvDir;
+    float3 T1 = (BoxMax - RayOrigin) * InvDir;
+    
+    float3 tMin = min(T0, T1);
+    float3 tMax = max(T0, T1);
+    
+    tEntry = max(max(tMin.x, tMin.y), tMin.z);
+    tExit = min(min(tMax.x, tMax.y), tMax.z);
+
+    return tEntry <= tExit;
+}
+
+float SampleDensity(float3 WorldPos)
+{
+    // 높이 제한
+    if(WorldPos.z < FogBaseHeight || WorldPos.z > FogMaxHeight)
+    {
+        return 0.0f;
+    }
+    
+    // 월드 XY -> Simluate UV
+    float2 SimUV = WorldToSimulationUV(WorldPos.xy);
+    if (SimUV.x < 0.0f || SimUV.x > 1.0f || SimUV.y < 0.0f || SimUV.y > 1.0f)
+    {
+        return 0.0f;
+    }
+    
+    float Density2D = DensityTexture.Sample(BilinearSampler, SimUV).r;
+    if(Density2D <= 1e-6)
+    {
+        return 0.0f;
+    }
+    
+    // 유체 속도 + Curl 왜곡
+    float2 Vel2D = VelocityTexture.Sample(BilinearSampler, SimUV).rg; 
+    //float3 curl = CurlNoise3D(WorldPos * CurlNoiseScale + float3(0.0f, 0.0f, Time * CurlNoiseSpeed));
+    float2 UV = WorldPos.xy * CurlTexScale + float2(Time * CurlTexSpeed, 0);
+    float2 Flow = CurlNoiseTexture.Sample(CurlNoiseSampler, UV).rg * 2.0f - 1.0f;
+    
+    float3 DistortedPos = WorldPos
+    + float3(Vel2D * VelocityDistortStrength, 0.0f)
+    + float3(Flow * CurlTexStrength, 0.0f);
+    //+ curl * CurlDistortStrength;
+    
+    // base noise   
+    //float N = GradientNoise3D(DistortedPos * BaseNoiseScale);
+    //float NoiseFactor = lerp(0.7, 1.3, saturate(N));
+    float NoiseFactor = 1.0f;
+    
+    // 높이 감쇠
+    float Falloff = max(HeightFalloff, 1e-3);
+    float Dz = max(WorldPos.z - FogBaseHeight, 0.0f);
+    float HeightFactor = exp(-Dz / Falloff);
+    float TopFade = saturate((FogMaxHeight - WorldPos.z) / Falloff);
+
+    float Density = Density2D * HeightFactor * TopFade * NoiseFactor * FogDensityMultiplier;
+    //float Density = Density2D * FogDensityMultiplier;
+    return max(Density, 0.0);
+    
+}
+
+void IntegrateRay(
+    float3 RayOrigin,
+    float3 RayDir,
+    float tStart,
+    float tEnd,
+    float2 PixelPos,
+    out float OutTransmittance,
+    out float3 OutScattering
+)
+{
+    float RayLen = max(tEnd - tStart, 0.0f);
+    
+    if (RayLen <= 1e-6)
+    {
+        OutTransmittance = 1.0f;
+        OutScattering = 0.0f;
+        return;
+    }
+    
+    // 거리 기반 Step + 상한 Num Steps
+    const float DesiredStepCm = 100.0f;
+    int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm);
+    int MaxSteps = max(NumSteps, 1);
+    int MinSteps = min(24, MaxSteps);
+    int Steps = clamp(AdaptiveSteps, MinSteps, MaxSteps);
+
+    
+    float StepSize = RayLen / max((float) Steps, 1.0f);
+    
+    // 밴딩 완화 
+    //float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
+    //float T = tStart + Jitter;
+    float T = tStart;
+    
+    float Transmittance = 1.0f;
+    float3 Scattering = 0.0f;
+
+    [loop]
+    for (int i = 0; i < Steps; ++i)
+    {
+        if(T > tEnd )
+        {
+            break;
+        }
+        
+        float3 P = RayOrigin + RayDir * T;
+        float Density = SampleDensity(P);
+        
+        if (Density > 1e-6)
+        {
+            float SigmaT = Density * max(Absorption, 1e-4f);
+            float StepT = exp(-SigmaT * StepSize);
+            
+            float3 StepScatter = (1.0f - StepT) * FogColor;
+            
+            Scattering += Transmittance * StepScatter;
+            Transmittance *= StepT;
+            
+            if(Transmittance < 0.01f)
+            {
+                break; 
+            }
+        }
+        
+        T += StepSize;
+    }
+    
+    OutTransmittance = saturate(Transmittance);
+    OutScattering = max(Scattering, 0.0f);
+
+}
+
+
+
 void MainPS(
     in float4 SvPosition : SV_Position,
     out float4 OutColor : SV_Target0
 )
 {
-    float2 UV = SvPosition.xy / ViewportSize;
+    //float2 UV = SvPosition.xy / ViewportSize;
     
+    //float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, UV);
+    
+    //// 픽셀의 월드 방향과 씬 깊이 구하기
+    //float3 WorldDir = ReconstructWorldDir(UV);
+    //float SceneDepth = GetLinearSceneDepth(UV);
+    
+    //// 시뮬레이션 볼륨
+    //float HalfSize = SimulationSize * 0.5f;
+    //float3 BoxMin = SimulationCenter - HalfSize;
+    //float3 BoxMax = SimulationCenter + HalfSize;
+    
+    //// P = O + t * dx
+    //// ( P - O ) / dx = t
+    //float3 InvDir = 1.0f / WorldDir;
+    //float3 T0 = (BoxMin - CameraPosition) * InvDir;
+    //float3 T1 = (BoxMax - CameraPosition) * InvDir;
+    
+    //float3 TMin = min(T0, T1);
+    //float3 TMax = max(T0, T1);
+    
+    //float tEntry = max(max(TMin.x, TMin.y), TMin.z);
+    //float tExit = min(min(TMax.x, TMax.y), TMax.z);
+    
+    //if (tEntry > tExit || tExit < 0.0f || tEntry > SceneDepth)
+    //{
+    //    // 시뮬레이션 볼륨 밖
+    //    OutColor = SceneColor;
+    //    return;
+    //}
+    
+    //OutColor = float4(0.2, 0.5, 0.1, 1.0f);
+    
+    float2 UV = SvPosition.xy / ViewportSize;
     float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, UV);
     
-    // 픽셀의 월드 방향과 씬 깊이 구하기
-    float3 WorldDir = ReconstructWorldDir(UV);
+    float3 RayOrigin = CameraPosition;
+    float3 RayDir = ReconstructWorldDir(UV);
     float SceneDepth = GetLinearSceneDepth(UV);
-    
-    // 시뮬레이션 볼륨
+ 
     float HalfSize = SimulationSize * 0.5f;
     float3 BoxMin = SimulationCenter - HalfSize;
-    float3 BoxMax = SimulationCenter + HalfSize;
+    float3 BoxMax = SimulationCenter + HalfSize; 
     
-    // P = O + t * dx
-    // ( P - O ) / dx = t
-    float3 InvDir = 1.0f / WorldDir;
-    float3 T0 = (BoxMin - CameraPosition) * InvDir;
-    float3 T1 = (BoxMax - CameraPosition) * InvDir;
+    float tEntry, tExit;
     
-    float3 TMin = min(T0, T1);
-    float3 TMax = max(T0, T1);
-    
-    float tEntry = max(max(TMin.x, TMin.y), TMin.z);
-    float tExit = min(min(TMax.x, TMax.y), TMax.z);
-    
-    if (tEntry > tExit || tExit < 0.0f || tEntry > SceneDepth)
+    if(!RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMax, tEntry, tExit) || tEntry > SceneDepth)
     {
-        // 시뮬레이션 볼륨 밖
         OutColor = SceneColor;
         return;
     }
     
-    OutColor = float4(0.2, 0.5, 0.1, 1.0f);
+    float tStart = max(tEntry, 0.0f);
+    float tEnd = min(min(tExit, SceneDepth), MaxRayDistance);
+    
+    if (tEnd <= tStart)
+    {
+        OutColor = SceneColor;
+        return;
+    }
+
+    float Transmittance;
+    float3 Scaterring;
+    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scaterring);
+    
+    float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
+    OutColor = float4(FinalColor, SceneColor.a);
+
 }
+

@@ -3,8 +3,9 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/Texture2D.h"
 #include "FogSceneViewExtension.h"
-#include "FluidSimulationComponent.generated.h"
+#include "FluidSimulationComponent.generated.h"  
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -116,11 +117,23 @@ public:
 	float MaxRayDistance = 5000.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlNoiseScale = 0.003f;
+	TObjectPtr<UTexture2D> CurlNoiseTexture;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlNoiseSpeed = 0.1f;
+	float CurlTexScale = 0.006f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlTexSpeed = 0.12f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlTexStrength = 40.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlNoiseScale = 0.003f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
+	float CurlNoiseSpeed = 0.1f;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
 	float CurlDistortStrength = 1.0f;
 

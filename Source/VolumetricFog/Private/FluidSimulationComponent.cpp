@@ -105,16 +105,29 @@ void UFluidSimulationComponent::BeginPlay()
 	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
 	FogExtension->bEnable = bEnableFog;
 
-    FVector BoundsOrigin, BoundsExtent;
-    GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
-
-    FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
-
-    const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
-    FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
-      
+    //FVector BoundsOrigin, BoundsExtent;
+    //GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
+    //
+    //FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
+    //
+    //const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
+    //FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
+       
     //FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
-	//FogExtension->SimulationSize = SimulationWorldSize;
+    //FogExtension->SimulationSize = SimulationWorldSize;
+
+    if (const UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent()))
+    {
+        const FBoxSphereBounds B = Prim->Bounds;
+        FogExtension->SimulationCenter = FVector3f(B.Origin);
+        FogExtension->SimulationSize = FMath::Max(1.0f, FMath::Max3(B.BoxExtent.X, B.BoxExtent.Y, B.BoxExtent.Z) * 2.0f);
+    }
+    else
+    {
+        FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
+        FogExtension->SimulationSize = FMath::Max(1.0f, SimulationWorldSize);
+    }
+
 }
 
 
@@ -123,17 +136,25 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (!FluidResources || !OutputRT)
+    //if (!FluidResources || !OutputRT)
+    //{
+    //	return;
+    //}
+	if (!FluidResources )
 	{
 		return;
 	}
 
-	FTextureRenderTargetResource* RTResource = OutputRT->GameThread_GetRenderTargetResource();
-
-	if (!RTResource)
-	{
-		return;
-	}
+    FTextureRenderTargetResource* RTResource = nullptr;
+    if (OutputRT)
+    {
+        RTResource = OutputRT->GameThread_GetRenderTargetResource();
+    }
+    
+	//if (!RTResource)
+	//{
+	//	return;
+	//}
 	
 	// 게임스레드에서 값 캡처
 	auto Resources = FluidResources;
@@ -193,9 +214,15 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		FogExtension->FogColor             = FVector3f(FogColor.R, FogColor.G, FogColor.B);
 		FogExtension->NumSteps             = NumSteps;
 		FogExtension->MaxRayDistance       = MaxRayDistance;
-		FogExtension->CurlNoiseScale       = CurlNoiseScale;
+		
+        FogExtension->CurlNoiseScale       = CurlNoiseScale;
 		FogExtension->CurlNoiseSpeed       = CurlNoiseSpeed;
 		FogExtension->CurlDistortStrength  = CurlDistortStrength;
+
+        FogExtension->CurlTexScale = CurlTexScale;
+        FogExtension->CurlTexSpeed = CurlTexSpeed;
+        FogExtension->CurlTexStrength = CurlTexStrength; 
+
 		FogExtension->VelocityDistortStrength = VelocityDistortStrength;
 		FogExtension->BaseNoiseScale       = BaseNoiseScale;
 
@@ -214,14 +241,21 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		int32 CurDen = DenIndex;
 		int32 CurVel = VelIndex;
 
+        FTextureRHIRef CurlTexRHI = nullptr;
+        if (CurlNoiseTexture && CurlNoiseTexture->GetResource())
+        {
+            CurlTexRHI = CurlNoiseTexture->GetResource()->TextureRHI;
+        }
+
 		ENQUEUE_RENDER_COMMAND(FUpdateFogTextures)(
-			[Ext, Res, CurDen, CurVel](FRHICommandListImmediate&
+			[Ext, Res, CurDen, CurVel, CurlTexRHI](FRHICommandListImmediate&
 	RHICmdList)
 			{
 				if (Res->bInitialize)
 				{
 					Ext->SetDensityRHI(Res->Density[CurDen]);
 					Ext->SetVelocityRHI(Res->Velocity[CurVel]);
+                    Ext->SetCurlNoiseRHI(CurlTexRHI);
 				}
 			}
 		);
@@ -524,6 +558,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	
   
  	 // Step 9: Density -> OutputRT 복사
+     if (RTResource)
  	 {
  	 	FTextureRHIRef OutputRHI = RTResource->GetRenderTargetTexture();
  	 	if (OutputRHI)
