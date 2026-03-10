@@ -49,11 +49,13 @@ public:
 		SHADER_PARAMETER(float, CurlTexScale)
 		SHADER_PARAMETER(float, CurlTexSpeed)
 		SHADER_PARAMETER(float, CurlTexStrength)
-
-
+ 
         SHADER_PARAMETER(FVector3f, SimulationCenter)
         SHADER_PARAMETER(float, SimulationSize)
-
+		
+		//Debug Parameter 
+		SHADER_PARAMETER(int32, FogDebugMode)
+	
         RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 	
@@ -146,9 +148,12 @@ public:
 	FVector3f SimulationCenter	= FVector3f::ZeroVector;
 	float SimulationSize = 5000.f;
 	
+	// Debug Parameter 
+	int32 FogDebugMode = 1;
 private:
 	void RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters);
 
+	
 	FTextureRHIRef DensityRHI;
 	FTextureRHIRef VelocityRHI;
 

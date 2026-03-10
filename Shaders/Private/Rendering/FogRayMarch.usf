@@ -47,6 +47,9 @@ float CurlTexStrength;
 float3 SimulationCenter;
 float SimulationSize;
 
+// Debug Mode
+int FogDebugMode;
+
 // 스크린 UV -> 월드 방향 벡터 생성
 // Depth Buffer에서 실제 위치를 복원하는 함수
 float3 ReconstructWorldDir(float2 UV)
@@ -148,7 +151,7 @@ bool RayBoxIntersect(float3 RayOrigin, float3 RayDir, float3 BoxMin, float3 BoxM
     return tEntry <= tExit;
 }
 
-float SampleDensity(float3 WorldPos)
+float SampleDensity3D(float3 WorldPos)
 {
     // 높이 제한
     if(WorldPos.z < FogBaseHeight || WorldPos.z > FogMaxHeight)
@@ -197,19 +200,35 @@ float SampleDensity(float3 WorldPos)
     
 }
 
-//// 3D Like 2D
-//float SampleDensity(float3 WorldPos)
-//{
-//    float2 SimUV = WorldToSimulationUV(WorldPos.xy);
-//
-//    if (SimUV.x < 0.0f || SimUV.x > 1.0f || SimUV.y < 0.0f || SimUV.y > 1.0f)
-//    {
-//        return 0.0f;
-//    }
-//
-//    float Density2D = DensityTexture.Sample(BilinearSampler, SimUV).r;
-//    return max(Density2D * FogDensityMultiplier, 0.0f);
-//}
+// 3D Like 2D
+float SampleDensity2D(float3 WorldPos)
+{
+    float2 SimUV = WorldToSimulationUV(WorldPos.xy);
+
+    if (SimUV.x < 0.0f || SimUV.x > 1.0f || SimUV.y < 0.0f || SimUV.y > 1.0f)
+    {
+        return 0.0f;
+    }
+
+    float Density2D = DensityTexture.Sample(BilinearSampler, SimUV).r;
+    return max(Density2D * FogDensityMultiplier, 0.0f);
+}
+
+float SampleDensity(float3 WorldPos)
+{
+	if(FogDebugMode == 0)
+	{
+	    return SampleDensity2D(WorldPos);
+	}
+	else if( FogDebugMode == 1)
+	{
+	    return SampleDensity3D(WorldPos);
+	}
+       
+    return SampleDensity3D(WorldPos);
+
+} 
+
 
 void IntegrateRay(
     float3 RayOrigin,

@@ -29,7 +29,7 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT || !CurlNoisePooledRT)
+	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT)
 	{
 		return;
 	}
@@ -82,10 +82,11 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->VelocityDistortStrength = VelocityDistortStrength;
 	Params->BaseNoiseScale         = BaseNoiseScale;
 	Params->Time                   = AccumulatedTime;
-
-
+ 
 	Params->SimulationCenter = SimulationCenter;
 	Params->SimulationSize   = SimulationSize;
+	
+	Params->FogDebugMode = FogDebugMode;
 	
 	// Scene Color에 직접 합성 
 	Params->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);

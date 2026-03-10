@@ -233,7 +233,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 
         const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
         FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
-
+		
+		FogExtension->FogDebugMode = static_cast<int32>(FogDebugMode);
 
 		// 렌더스레드에 Density/Velocity 텍스처 전달
 		auto Ext = FogExtension;

@@ -5,7 +5,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
 #include "FogSceneViewExtension.h"
-#include "FluidSimulationComponent.generated.h"  
+#include "FluidSimulationComponent.generated.h"
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -13,29 +13,38 @@ struct FFluidResources
 	FTextureRHIRef Velocity[2];
 	FTextureRHIRef Density[2];
 	FTextureRHIRef Pressure[2];
-	FTextureRHIRef Divergence;
+	FTextureRHIRef Divergence; 
 	FTextureRHIRef Vorticity;
 	FTextureRHIRef TempVelocity;
 
-	FShaderResourceViewRHIRef VelocitySRV[2];
-	FShaderResourceViewRHIRef DensitySRV[2];
-	FShaderResourceViewRHIRef PressureSRV[2];
-	FShaderResourceViewRHIRef DivergenceSRV;
-	FShaderResourceViewRHIRef VorticitySRV;
-	FShaderResourceViewRHIRef TempVelocitySRV;
+    FShaderResourceViewRHIRef VelocitySRV[2];
+    FShaderResourceViewRHIRef DensitySRV[2];
+    FShaderResourceViewRHIRef PressureSRV[2];
+    FShaderResourceViewRHIRef DivergenceSRV;
+    FShaderResourceViewRHIRef VorticitySRV;
+    FShaderResourceViewRHIRef TempVelocitySRV;
 
-	FUnorderedAccessViewRHIRef VelocityUAV[2];
-	FUnorderedAccessViewRHIRef DensityUAV[2];
-	FUnorderedAccessViewRHIRef PressureUAV[2];
-	FUnorderedAccessViewRHIRef DivergenceUAV;
-	FUnorderedAccessViewRHIRef VorticityUAV;
-	FUnorderedAccessViewRHIRef TempVelocityUAV;
-
+    FUnorderedAccessViewRHIRef VelocityUAV[2];
+    FUnorderedAccessViewRHIRef DensityUAV[2];
+    FUnorderedAccessViewRHIRef PressureUAV[2];
+    FUnorderedAccessViewRHIRef DivergenceUAV;
+    FUnorderedAccessViewRHIRef VorticityUAV;
+    FUnorderedAccessViewRHIRef TempVelocityUAV;
+    
 	int32 Resolution = 0;
 	bool bInitialize = false;
 
 	void Init(int32 Res, FRHICommandListImmediate& RHICmdList);
 };
+
+UENUM(BlueprintType)
+enum class EFluidFogDebugMode: uint8
+{
+	Sim_2D UMETA(DisplayName = "2D Simulation"),
+	Sim_3D UMETA(DisplayName = "3D Simulation"),
+	
+};
+
 
 UCLASS(ClassGroup=(VolumetricFog), meta=(BlueprintSpawnableComponent))
 class VOLUMETRICFOG_API UFluidSimulationComponent : public UActorComponent
@@ -49,6 +58,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	// ======== Debug Setting ======== 
+	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category="Fluid|Debug")
+	EFluidFogDebugMode FogDebugMode = EFluidFogDebugMode::Sim_3D;
+	
 	// ======== Editer Setting ========
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fluid")
 	UTextureRenderTarget2D* OutputRT;
@@ -115,7 +128,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float MaxRayDistance = 5000.f;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
 	TObjectPtr<UTexture2D> CurlNoiseTexture;
 
@@ -130,10 +143,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
 	float CurlNoiseScale = 0.003f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
 	float CurlNoiseSpeed = 0.1f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
 	float CurlDistortStrength = 1.0f;
 
