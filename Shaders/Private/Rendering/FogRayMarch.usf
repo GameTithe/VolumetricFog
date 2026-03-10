@@ -197,6 +197,20 @@ float SampleDensity(float3 WorldPos)
     
 }
 
+//// 3D Like 2D
+//float SampleDensity(float3 WorldPos)
+//{
+//    float2 SimUV = WorldToSimulationUV(WorldPos.xy);
+//
+//    if (SimUV.x < 0.0f || SimUV.x > 1.0f || SimUV.y < 0.0f || SimUV.y > 1.0f)
+//    {
+//        return 0.0f;
+//    }
+//
+//    float Density2D = DensityTexture.Sample(BilinearSampler, SimUV).r;
+//    return max(Density2D * FogDensityMultiplier, 0.0f);
+//}
+
 void IntegrateRay(
     float3 RayOrigin,
     float3 RayDir,

@@ -498,43 +498,43 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
  	 }
 
  	 // Step 8 : Diffuse
- 	{
- 	 	// Divergence 텍스처를 임시 버퍼로 사용 (이 시점에서 안 쓰니까)
- 	 	// 확산 전 원본 밀도를 보관
- 	 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Density[CurDenIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
- 	 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Divergence, ERHIAccess::Unknown, ERHIAccess::CopyDest));
- 	 	FRHICopyTextureInfo CopyInfo;
- 	 	RHICmdList.CopyTexture(InFluidResources->Density[CurDenIdx], InFluidResources->Divergence, CopyInfo);
-
- 	 	// Jacobi 확산 파라미터
- 	 	// DensityDiffusion: 클수록 더 많이 퍼짐 (0.5 ~ 50.0 범위에서 조절)
- 	 	const float DensityDiffusion = 10.0f;
- 	 	//const float DiffAlpha = 1.0f / (DensityDiffusion * DeltaTime);
- 	 	const float DiffAlpha = (Dx * Dx) / (DensityDiffusion * DeltaTime);
- 	 	const float DiffInvBeta = 1.0f / (4.0f + DiffAlpha);
- 	 	const int32 DiffIterations = 5;
-
- 	 	for (int32 i = 0; i < DiffIterations; ++i)
- 	 	{
- 	 		int32 NextDenIdx = 1 - CurDenIdx;
-
- 	 		ToSRV(InFluidResources->Density[CurDenIdx]);
- 	 		ToSRV(InFluidResources->Divergence);
- 	 		ToUAV(InFluidResources->Density[NextDenIdx]);
-
- 	 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
- 	 		FFluidDiffuseCS::FParameters Params;
- 	 		Params.InputTexture  = InFluidResources->DensitySRV[CurDenIdx];   // 이웃 (현재 추정)
- 	 		Params.PrevTexture   = InFluidResources->DivergenceSRV;           // 원본 밀도 (b)
- 	 		Params.OutputTexture = InFluidResources->DensityUAV[NextDenIdx];
- 	 		Params.Alpha         = DiffAlpha;
- 	 		Params.InvBeta       = DiffInvBeta;
- 	 		Params.Resolution    = ResolutionPt;
-
- 	 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
- 	 		CurDenIdx = NextDenIdx;
- 	 	}
- 	}
+ 	//{
+ 	// 	// Divergence 텍스처를 임시 버퍼로 사용 (이 시점에서 안 쓰니까)
+ 	// 	// 확산 전 원본 밀도를 보관
+ 	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Density[CurDenIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
+ 	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Divergence, ERHIAccess::Unknown, ERHIAccess::CopyDest));
+ 	// 	FRHICopyTextureInfo CopyInfo;
+ 	// 	RHICmdList.CopyTexture(InFluidResources->Density[CurDenIdx], InFluidResources->Divergence, CopyInfo);
+    //
+ 	// 	// Jacobi 확산 파라미터
+ 	// 	// DensityDiffusion: 클수록 더 많이 퍼짐 (0.5 ~ 50.0 범위에서 조절)
+ 	// 	const float DensityDiffusion = 10.0f;
+ 	// 	//const float DiffAlpha = 1.0f / (DensityDiffusion * DeltaTime);
+ 	// 	const float DiffAlpha = (Dx * Dx) / (DensityDiffusion * DeltaTime);
+ 	// 	const float DiffInvBeta = 1.0f / (4.0f + DiffAlpha);
+ 	// 	const int32 DiffIterations = 5;
+    //
+ 	// 	for (int32 i = 0; i < DiffIterations; ++i)
+ 	// 	{
+ 	// 		int32 NextDenIdx = 1 - CurDenIdx;
+    //
+ 	// 		ToSRV(InFluidResources->Density[CurDenIdx]);
+ 	// 		ToSRV(InFluidResources->Divergence);
+ 	// 		ToUAV(InFluidResources->Density[NextDenIdx]);
+    //
+ 	// 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+ 	// 		FFluidDiffuseCS::FParameters Params;
+ 	// 		Params.InputTexture  = InFluidResources->DensitySRV[CurDenIdx];   // 이웃 (현재 추정)
+ 	// 		Params.PrevTexture   = InFluidResources->DivergenceSRV;           // 원본 밀도 (b)
+ 	// 		Params.OutputTexture = InFluidResources->DensityUAV[NextDenIdx];
+ 	// 		Params.Alpha         = DiffAlpha;
+ 	// 		Params.InvBeta       = DiffInvBeta;
+ 	// 		Params.Resolution    = ResolutionPt;
+    //
+ 	// 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+ 	// 		CurDenIdx = NextDenIdx;
+ 	// 	}
+ 	//}
  	 // Step 9: Advect Density
  	 {
  	 	int32 NextDenIdx = 1 - CurDenIdx;
