@@ -5,6 +5,9 @@
 #include "RHICommandList.h"
 #include "RHIStaticStates.h"
 #include "GlobalShader.h"
+#include "VolumetricFluidFog.h"
+#include "Components/BoxComponent.h"
+
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -115,19 +118,17 @@ void UFluidSimulationComponent::BeginPlay()
        
     //FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
     //FogExtension->SimulationSize = SimulationWorldSize;
-
-    if (const UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent()))
+     
+    FVector BoundsOrigin, BoundsExtents;
+    if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
     {
-        const FBoxSphereBounds B = Prim->Bounds;
-        FogExtension->SimulationCenter = FVector3f(B.Origin);
-        FogExtension->SimulationSize = FMath::Max(1.0f, FMath::Max3(B.BoxExtent.X, B.BoxExtent.Y, B.BoxExtent.Z) * 2.0f);
-    }
-    else
-    {
-        FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
-        FogExtension->SimulationSize = FMath::Max(1.0f, SimulationWorldSize);
-    }
+        FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
+        FogExtension->SimulationExtents = FVector3f(BoundsExtents);
 
+
+        FogExtension->FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
+        FogExtension->FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
+    }
 }
 
 
@@ -206,9 +207,17 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	{
 		FogExtension->bEnable              = bEnableFog;
 		FogExtension->AccumulatedTime      = AccumulatedTime;  
-		FogExtension->FogBaseHeight        = FogBaseHeight;
-		FogExtension->FogMaxHeight         = FogMaxHeight;
+
+        // Height Attenuation Mode
+        FogExtension->HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
+        
+        //Legacy
 		FogExtension->HeightFalloff        = HeightFalloff;
+
+        //Adative Attenuation
+		FogExtension->HeightFadeStartRatio = HeightFadeStartRatio;
+		FogExtension->HeightFadeStrength = HeightFadeStrength;
+
 		FogExtension->FogDensityMultiplier = FogDensityMultiplier;
 		FogExtension->Absorption           = Absorption;
 		FogExtension->FogColor             = FVector3f(FogColor.R, FogColor.G, FogColor.B);
@@ -226,14 +235,16 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		FogExtension->VelocityDistortStrength = VelocityDistortStrength;
 		FogExtension->BaseNoiseScale       = BaseNoiseScale;
 
-        FVector BoundsOrigin, BoundsExtent;
-        GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
+        FVector BoundsOrigin, BoundsExtents;
+        if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
+        {
+            FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
+            FogExtension->SimulationExtents = FVector3f(BoundsExtents);
 
-        FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
-
-        const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
-        FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
-		
+            FogExtension->FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
+            FogExtension->FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
+        }
+         
 		FogExtension->FogDebugMode = static_cast<int32>(FogDebugMode);
 
 		// 렌더스레드에 Density/Velocity 텍스처 전달
@@ -263,7 +274,29 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	}
 }
  
- void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
+bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const
+{
+    const AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return false;
+    }
+
+    if (const AVolumetricFluidFog* FogActor = Cast<AVolumetricFluidFog>(Owner))
+    {
+        if (const UBoxComponent* Box = FogActor->GetBoundsComponents())
+        {
+            OutOrigin = Box->GetComponentLocation();
+            OutExtent = Box->GetScaledBoxExtent();
+            return true;
+        }
+    }
+
+    Owner->GetActorBounds(false, OutOrigin, OutExtent);
+    return true;
+}
+
+void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
  	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources, FTextureRenderTargetResource* RTResource,
  	float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
  	FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 

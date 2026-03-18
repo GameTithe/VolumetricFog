@@ -20,10 +20,22 @@ float4x4 InvViewProjectionMatrix;
 float3 CameraPosition;
 float2 ViewportSize;
 
-// Fog Parameters
+// Fog Parameters (Height)
 float FogBaseHeight;
 float FogMaxHeight;
+
+// Height Attenuation Mode
+int HeightAttenuationMode;
+
+// Legacy
 float HeightFalloff;
+
+// Adaptive Height Attenuation
+float HeightFadeStartRatio;
+float HeightFadeStrength;
+
+
+// Fog Parameters
 float FogDensityMultiplier;
 float Absorption;
 float3 FogColor;
@@ -45,7 +57,7 @@ float CurlTexStrength;
 
 // Simulation Bouning Box
 float3 SimulationCenter;
-float SimulationSize;
+float3 SimulationExtents;
 
 // Debug Mode
 int FogDebugMode;
@@ -75,10 +87,9 @@ float3 ReconstructWorldDir(float2 UV)
 float2 WorldToSimulationUV(float2 WorldXY)
 {
     float2 LocalXY = WorldXY - SimulationCenter.xy;
-    float SimSize = max(SimulationSize, 1e-3);
-    float HalfSize = SimSize * 0.5f;
-
-    float2 UV = (LocalXY + HalfSize) / SimSize;
+    float2 SafeExtents = max(SimulationExtents.xy, float2(1e-3f, 1e-3f));
+    
+    float2 UV = (LocalXY + SafeExtents) / (SafeExtents * 2.0f);
     UV.y = 1.0f - UV.y; // Y flip
     return UV;
 }
@@ -151,6 +162,37 @@ bool RayBoxIntersect(float3 RayOrigin, float3 RayDir, float3 BoxMin, float3 BoxM
     return tEntry <= tExit;
 }
 
+float ComputeLegacyHeightAttenuation(float WorldZ)
+{
+    float Falloff = max(HeightFalloff, 1e-3f);
+    float Dz = max(WorldZ - FogBaseHeight, 0.0f);
+    
+    float HeightFactor = exp(-Dz / Falloff);
+    float TopFade = saturate((FogMaxHeight - WorldZ) / Falloff);
+       
+    return saturate(HeightFactor * TopFade);
+}
+float ComputeAdaptiveHeightAttenuation(float WorldZ)
+{
+    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
+    float HeightRatio = saturate( (WorldZ  - FogBaseHeight) / HeightSpan ) ;
+    float T = saturate( (HeightRatio - HeightFadeStartRatio) / max(1.0f - HeightFadeStartRatio, 1e-3f) ); 
+
+    float Strength = max(HeightFadeStrength, 1e-3f);
+    return pow(saturate(1 - T), Strength);
+}
+
+float ComputeHeightAttenuation(float WorldZ)
+{
+    if(HeightAttenuationMode == 0)
+    {
+        return ComputeLegacyHeightAttenuation(WorldZ);
+    }
+    return ComputeAdaptiveHeightAttenuation(WorldZ);
+}
+
+
+
 float SampleDensity3D(float3 WorldPos)
 {
     // 높이 제한
@@ -189,15 +231,11 @@ float SampleDensity3D(float3 WorldPos)
     float NoiseFactor = 1.0f;
     
     // 높이 감쇠
-    float Falloff = max(HeightFalloff, 1e-3);
-    float Dz = max(WorldPos.z - FogBaseHeight, 0.0f);
-    float HeightFactor = exp(-Dz / Falloff);
-    float TopFade = saturate((FogMaxHeight - WorldPos.z) / Falloff);
-
-    float Density = Density2D * HeightFactor * TopFade * NoiseFactor * FogDensityMultiplier;
-    //float Density = Density2D * FogDensityMultiplier;
-    return max(Density, 0.0);
+    float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
+    HeightAttenuation = max(HeightAttenuation , 1e-3);    
+    float Density = Density2D * HeightAttenuation * NoiseFactor * FogDensityMultiplier;
     
+    return max(Density, 0.0);
 }
 
 // 3D Like 2D
@@ -349,10 +387,9 @@ void MainPS(
     float3 RayOrigin = CameraPosition;
     float3 RayDir = ReconstructWorldDir(UV);
     float SceneDepth = GetLinearSceneDepth(UV);
- 
-    float HalfSize = SimulationSize * 0.5f;
-    float3 BoxMin = SimulationCenter - HalfSize;
-    float3 BoxMax = SimulationCenter + HalfSize; 
+  
+    float3 BoxMin = SimulationCenter - SimulationExtents;
+    float3 BoxMax = SimulationCenter + SimulationExtents; 
     
     float tEntry, tExit;
     

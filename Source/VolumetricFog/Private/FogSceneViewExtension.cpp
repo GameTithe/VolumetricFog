@@ -84,7 +84,8 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->Time                   = AccumulatedTime;
  
 	Params->SimulationCenter = SimulationCenter;
-	Params->SimulationSize   = SimulationSize;
+	Params->SimulationExtents = SimulationExtents;
+
 	
 	Params->FogDebugMode = FogDebugMode;
 	

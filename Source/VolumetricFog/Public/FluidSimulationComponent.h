@@ -45,6 +45,13 @@ enum class EFluidFogDebugMode: uint8
 	
 };
 
+UENUM(BlueprintType)
+enum class EFluidHeightAttenuationMode : uint8
+{
+	LegacyExp UMETA(DisplayName = "Legacy Exponential"),
+	AdaptiveNormalized UMETA(DisplayName = "Adaptive Normalized"),
+};
+
 
 UCLASS(ClassGroup=(VolumetricFog), meta=(BlueprintSpawnableComponent))
 class VOLUMETRICFOG_API UFluidSimulationComponent : public UActorComponent
@@ -101,12 +108,7 @@ public:
 	// ======== Fog Rendering ========
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	bool bEnableFog = true;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	float FogBaseHeight = 0.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	float FogMaxHeight = 500.f;
+	 
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float HeightFalloff = 200.f;
@@ -158,7 +160,21 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float SimulationWorldSize = 5000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
+	EFluidHeightAttenuationMode HeightAttenuationMode = EFluidHeightAttenuationMode::AdaptiveNormalized;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
+	float HeightFadeStartRatio = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
+	float HeightFadeStrength = 1.0f;
+	
 private:
+	/** Helper Function */
+	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;
+
+	/** Resources */
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;
 	
 	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> FogExtension;

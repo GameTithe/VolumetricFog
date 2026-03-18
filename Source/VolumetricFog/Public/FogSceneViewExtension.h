@@ -18,22 +18,31 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
 
-        SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
-        SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
-        SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
 
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
-        SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 
-        SHADER_PARAMETER(FMatrix44f, InvViewProjectionMatrix)
-        SHADER_PARAMETER(FVector3f, CameraPosition)
-        SHADER_PARAMETER(FVector2f, ViewportSize)
+		SHADER_PARAMETER(FMatrix44f, InvViewProjectionMatrix)
+		SHADER_PARAMETER(FVector3f, CameraPosition)
+		SHADER_PARAMETER(FVector2f, ViewportSize)
 
-        SHADER_PARAMETER(float, FogBaseHeight)
-        SHADER_PARAMETER(float, FogMaxHeight)
-        SHADER_PARAMETER(float, HeightFalloff)
-        SHADER_PARAMETER(float, FogDensityMultiplier)
+		SHADER_PARAMETER(float, FogBaseHeight)
+		SHADER_PARAMETER(float, FogMaxHeight)
+
+		//Height Attenuation Mode
+		SHADER_PARAMETER(int32, HeightAttenuationMode)
+		// Legacy
+		SHADER_PARAMETER(float, HeightFalloff)
+
+		//Adaptive
+		SHADER_PARAMETER(float, HeightFadeStartRatio)
+		SHADER_PARAMETER(float, HeightFadeStrength)
+
+		SHADER_PARAMETER(float, FogDensityMultiplier)
         SHADER_PARAMETER(float, Absorption)
         SHADER_PARAMETER(FVector3f, FogColor)
         SHADER_PARAMETER(int, NumSteps)
@@ -51,7 +60,7 @@ public:
 		SHADER_PARAMETER(float, CurlTexStrength)
  
         SHADER_PARAMETER(FVector3f, SimulationCenter)
-        SHADER_PARAMETER(float, SimulationSize)
+        SHADER_PARAMETER(FVector3f, SimulationExtents)
 		
 		//Debug Parameter 
 		SHADER_PARAMETER(int32, FogDebugMode)
@@ -126,12 +135,21 @@ public:
 	// Fog Parameters
 	float FogBaseHeight = 0.f;
 	float FogMaxHeight = 500.f;
-	float HeightFalloff       = 200.f;
 	float FogDensityMultiplier = 2.f;
 	float Absorption          = 0.5f;
 	FVector3f FogColor        = FVector3f(0.8f, 0.85f, 0.9f);
 	int32 NumSteps            = 64;
 	float MaxRayDistance       = 5000.f;
+	
+	// Height Attenuation Mode 
+	int32 HeightAttenuationMode = 1;
+	
+	// Legacy
+	float HeightFalloff       = 200.f;
+	
+	// Adaptive Height Attenuation
+	float HeightFadeStartRatio = 0.5f;
+	float HeightFadeStrength = 1.0f; 
 	 
 	// Curl Noise Parameters 
 	float CurlNoiseScale         = 0.003f;
@@ -146,8 +164,8 @@ public:
 	float CurlTexStrength = 40.0f;
 
 	FVector3f SimulationCenter	= FVector3f::ZeroVector;
-	float SimulationSize = 5000.f;
-	
+	FVector3f SimulationExtents = FVector3f(3.0f, 3.0f, 3.0f);
+
 	// Debug Parameter 
 	int32 FogDebugMode = 1;
 private:
