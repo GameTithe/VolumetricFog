@@ -5,6 +5,7 @@
 #include "GlobalShader.h"
 #include "ShaderParameterStruct.h"
 #include "RendererInterface.h"
+#include "ScreenPass.h"
 
 // Ray Marching PS
 class FFogRayMarchingPS : public FGlobalShader
@@ -26,9 +27,12 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneDepthViewport)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, OutputViewport)
+
 		SHADER_PARAMETER(FMatrix44f, InvViewProjectionMatrix)
 		SHADER_PARAMETER(FVector3f, CameraPosition)
-		SHADER_PARAMETER(FVector2f, ViewportSize)
 
 		SHADER_PARAMETER(float, FogBaseHeight)
 		SHADER_PARAMETER(float, FogMaxHeight)

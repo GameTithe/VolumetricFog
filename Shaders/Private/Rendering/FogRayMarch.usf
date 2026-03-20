@@ -1,4 +1,6 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
 //#include "/VolumetricFog/Rendering/CurlNoise.ush"
 
 // Scene Textures
@@ -15,10 +17,14 @@ Texture2D DensityTexture;
 Texture2D VelocityTexture;
 SamplerState BilinearSampler;
 
+SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
+SCREEN_PASS_TEXTURE_VIEWPORT(SceneDepthViewport)
+SCREEN_PASS_TEXTURE_VIEWPORT(OutputViewport)
+
+
 // Camera
 float4x4 InvViewProjectionMatrix;
 float3 CameraPosition;
-float2 ViewportSize;
 
 // Fog Parameters (Height)
 float FogBaseHeight;
@@ -94,6 +100,29 @@ float2 WorldToSimulationUV(float2 WorldXY)
     return UV;
 }
 
+  float2 GetOutputViewportUV(float4 SvPosition)
+  {
+      return (SvPosition.xy - OutputViewport_ViewportMin) *
+  OutputViewport_ViewportSizeInverse;
+  }
+
+  float2 GetSceneColorUV(float2 ViewportUV)
+  {
+      float2 SamplePosition = ViewportUV * SceneColorViewport_ViewportSize +
+  SceneColorViewport_ViewportMin;
+      float2 UV = SamplePosition * SceneColorViewport_ExtentInverse;
+      return clamp(UV, SceneColorViewport_UVViewportBilinearMin,
+  SceneColorViewport_UVViewportBilinearMax);
+  }
+
+  float2 GetSceneDepthUV(float2 ViewportUV)
+  {
+      float2 SamplePosition = ViewportUV * SceneDepthViewport_ViewportSize +
+  SceneDepthViewport_ViewportMin;
+      float2 UV = SamplePosition * SceneDepthViewport_ExtentInverse;
+      return clamp(UV, SceneDepthViewport_UVViewportBilinearMin,
+  SceneDepthViewport_UVViewportBilinearMax);
+  }
 
 //float3 ReconstructWorldPos(float2 UV, float DeviceDepth)
 //{
@@ -114,24 +143,42 @@ float2 WorldToSimulationUV(float2 WorldXY)
 //}
 
 // Scene Depth -> 선형 카메라 거리 변환
-float GetLinearSceneDepth(float2 UV)
+//float GetLinearSceneDepth(float2 UV)
+//{
+//    // [0, 1]
+//    float SceneDepth = SceneDepthTexture.Sample(SceneDepthSampler, UV).r;
+//    
+//    // Clip Space 
+//    float4 ClipSpacePosition;
+//    ClipSpacePosition.xy = UV * 2.0f - 1.0f;
+//    ClipSpacePosition.y = -ClipSpacePosition.y;
+//    ClipSpacePosition.z = SceneDepth;
+//    ClipSpacePosition.w = 1.0f;
+//    
+//    float4 WorldPosition = mul(ClipSpacePosition, InvViewProjectionMatrix);
+//    
+//    WorldPosition.xyz /= WorldPosition.w;
+//    
+//    return length(WorldPosition.xyz - CameraPosition);
+//} 
+
+// Scene Depth -> 선형 카메라 거리 변환
+float GetLinearSceneDepth(float2 DepthUV, float2 ViewportUV)
 {
-    // [0, 1]
-    float SceneDepth = SceneDepthTexture.Sample(SceneDepthSampler, UV).r;
-    
-    // Clip Space 
+    float SceneDepth = SceneDepthTexture.Sample(SceneDepthSampler, DepthUV).r;
+
     float4 ClipSpacePosition;
-    ClipSpacePosition.xy = UV * 2.0f - 1.0f;
+    ClipSpacePosition.xy = ViewportUV * 2.0f - 1.0f;
     ClipSpacePosition.y = -ClipSpacePosition.y;
     ClipSpacePosition.z = SceneDepth;
     ClipSpacePosition.w = 1.0f;
-    
+
     float4 WorldPosition = mul(ClipSpacePosition, InvViewProjectionMatrix);
-    
     WorldPosition.xyz /= WorldPosition.w;
     
     return length(WorldPosition.xyz - CameraPosition);
 } 
+
 // dithered offset을 생성하는 noise 함수 
 float InterleavedGradientNoise(float2 screenPos)
 {
@@ -381,13 +428,22 @@ void MainPS(
     
     //OutColor = float4(0.2, 0.5, 0.1, 1.0f);
     
-    float2 UV = SvPosition.xy / ViewportSize;
-    float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, UV);
-    
-    float3 RayOrigin = CameraPosition;
-    float3 RayDir = ReconstructWorldDir(UV);
-    float SceneDepth = GetLinearSceneDepth(UV);
+    //float2 UV = SvPosition.xy / ViewportSize;
+    //float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, UV);
+    //
+    //float3 RayOrigin = CameraPosition;
+    //float3 RayDir = ReconstructWorldDir(UV);
+    //float SceneDepth = GetLinearSceneDepth(UV);
   
+
+    float2 ViewportUV = GetOutputViewportUV(SvPosition);
+    float2 SceneColorUV = GetSceneColorUV(ViewportUV);
+    float2 SceneDepthUV = GetSceneDepthUV(ViewportUV);
+    float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, SceneColorUV);
+    float3 RayOrigin = CameraPosition;
+    float3 RayDir = ReconstructWorldDir(ViewportUV);
+    float SceneDepth = GetLinearSceneDepth(SceneDepthUV, ViewportUV);
+
     float3 BoxMin = SimulationCenter - SimulationExtents;
     float3 BoxMax = SimulationCenter + SimulationExtents; 
     

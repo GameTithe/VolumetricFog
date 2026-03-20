@@ -3,7 +3,7 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "FogSceneViewExtension.h"
-#include "SceneRendering.h"
+#include "SceneRendering.h" 
 
 IMPLEMENT_GLOBAL_SHADER(FFogFullscreenPS, "/VolumetricFog/Rendering/FogFullscreen.usf", "MainPS", SF_Pixel);
 IMPLEMENT_GLOBAL_SHADER(FFogRayMarchingPS, "/VolumetricFog/Rendering/FogRayMarch.usf", "MainPS", SF_Pixel);
@@ -29,17 +29,28 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT)
+	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT || !CurlNoisePooledRT)
 	{
 		return;
 	}
 
-	FRDGBuilder& GraphBuilder = *InParameters.GraphBuilder;
-	const FViewInfo& View = *InParameters.View;
-
 	FRDGTextureRef SceneColor = InParameters.ColorTexture;
 	FRDGTextureRef SceneDepth = InParameters.DepthTexture;
 
+	const FScreenPassTexture SceneColorInput(SceneColor, InParameters.ViewportRect);
+	const FScreenPassTexture SceneDepthInput(SceneDepth, InParameters.ViewportRect);
+
+	FRDGBuilder& GraphBuilder = *InParameters.GraphBuilder;
+	const FViewInfo& View = *InParameters.View;
+
+	FScreenPassRenderTarget FogOutput =
+		FScreenPassRenderTarget::CreateFromInput(
+			GraphBuilder,
+			SceneColorInput,
+			ERenderTargetLoadAction::ENoAction,
+			TEXT("FogOutput")
+		); 
+	 
 	// 캐싱된 PooledRT를 RDG에 등록
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
 	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT); 
@@ -51,9 +62,13 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->SceneDepthTexture = SceneDepth;
 	Params->CurlNoiseTexture = CurlNoiseRDG;
 
-	Params->SceneColorSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-	Params->SceneDepthSampler = TStaticSamplerState<SF_Point>::GetRHI();
+	Params->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	Params->SceneDepthSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	Params->CurlNoiseSampler = TStaticSamplerState< SF_Bilinear>::GetRHI();
+
+	Params->SceneColorViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneColorInput));
+	Params->SceneDepthViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneDepthInput));
+	Params->OutputViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(FogOutput));
 
 	Params->DensityTexture  = DensityRDG;
 	Params->VelocityTexture = VelocityRDG;
@@ -61,11 +76,16 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 
 	Params->InvViewProjectionMatrix = FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
 	Params->CameraPosition = FVector3f(View.ViewMatrices.GetViewOrigin());
-	Params->ViewportSize   = FVector2f(InParameters.ViewportRect.Width(), InParameters.ViewportRect.Height());
+
+	Params->HeightAttenuationMode = HeightAttenuationMode;
+	Params->HeightFadeStartRatio = HeightFadeStartRatio;
+	Params->HeightFadeStrength = HeightFadeStrength;
 
 	Params->FogBaseHeight        = FogBaseHeight;
 	Params->FogMaxHeight         = FogMaxHeight;
 	Params->HeightFalloff        = HeightFalloff;
+
+
 	Params->FogDensityMultiplier = FogDensityMultiplier;
 	Params->Absorption           = Absorption;
 	Params->FogColor             = FogColor;
@@ -90,7 +110,8 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->FogDebugMode = FogDebugMode;
 	
 	// Scene Color에 직접 합성 
-	Params->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);
+	//Params->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);
+	Params->RenderTargets[0] = FogOutput.GetRenderTargetBinding();
 	
 	TShaderMapRef<FFogRayMarchingPS> PS(GetGlobalShaderMap(View.GetFeatureLevel()));
 	
@@ -99,6 +120,16 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 			 GetGlobalShaderMap(View.GetFeatureLevel()),
 			 RDG_EVENT_NAME("FogRayMarch"),
 			 PS, Params,
-			 InParameters.ViewportRect);
+		FogOutput.ViewRect);
+
+	FRHICopyTextureInfo CopyInfo;
+	CopyInfo.SourcePosition = FIntVector(InParameters.ViewportRect.Min.X,
+		InParameters.ViewportRect.Min.Y, 0);
+	CopyInfo.DestPosition = CopyInfo.SourcePosition;
+	CopyInfo.Size = FIntVector(InParameters.ViewportRect.Width(),
+		InParameters.ViewportRect.Height(), 1);
+	
+	AddCopyTexturePass(GraphBuilder, FogOutput.Texture, SceneColor, CopyInfo);
+
 }
  
