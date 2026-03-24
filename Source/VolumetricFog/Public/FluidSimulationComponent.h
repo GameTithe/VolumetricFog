@@ -7,6 +7,8 @@
 #include "FogSceneViewExtension.h"
 #include "FluidSimulationComponent.generated.h"
 
+class UCurveFloat;
+
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
 {
@@ -49,7 +51,8 @@ UENUM(BlueprintType)
 enum class EFluidHeightAttenuationMode : uint8
 {
 	LegacyExp UMETA(DisplayName = "Legacy Exponential"),
-	AdaptiveNormalized UMETA(DisplayName = "Adaptive Normalized"),
+	AdaptiveNormalCurveAttenuationized UMETA(DisplayName = "Adaptive Normalized(Linear)"),
+	CurveAttenuation UMETA(DisplayName = "Curve Attenuation"),
 };
 
 
@@ -161,8 +164,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float SimulationWorldSize = 5000.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
+	TObjectPtr<UCurveFloat> HeightAttenuationCurve = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (ClampMin = "32", ClampMax = "1024", EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
+	int32 HeightCurveLUTResolution = 256;
+ 
+
+	UPROPERTY()
+	bool bHeightCurveDirty = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
-	EFluidHeightAttenuationMode HeightAttenuationMode = EFluidHeightAttenuationMode::AdaptiveNormalized;
+	EFluidHeightAttenuationMode HeightAttenuationMode = EFluidHeightAttenuationMode::CurveAttenuation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
 	float HeightFadeStartRatio = 0.5f;
@@ -173,6 +186,10 @@ public:
 private:
 	/** Helper Function */
 	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;
+	
+	TArray<float> BuildHeightCurveSamples() const;
+	void PushHeightCurveSamplesToFogExtension();
+	void ReleaseHeightCurveFromFogExtension();
 
 	/** Resources */
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;

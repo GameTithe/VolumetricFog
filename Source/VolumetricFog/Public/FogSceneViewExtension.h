@@ -6,6 +6,7 @@
 #include "ShaderParameterStruct.h"
 #include "RendererInterface.h"
 #include "ScreenPass.h"
+#include "HeightCurveLUTResource.h"
 
 // Ray Marching PS
 class FFogRayMarchingPS : public FGlobalShader
@@ -18,10 +19,13 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HeightCurveTexture)
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, HeightCurveSampler)
+		
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
@@ -133,7 +137,7 @@ public:
 			CurlNoisePooledRT = InTex ? CreateRenderTarget(InTex, TEXT("CurlNoise")) : nullptr;
 		}
 	}
-	
+	 
 	bool bEnable = false;
 	
 	// Fog Parameters
@@ -172,9 +176,14 @@ public:
 
 	// Debug Parameter 
 	int32 FogDebugMode = 1;
+	
+	
+	void UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList, TConstArrayView<float> Samples);
+	void ReleaseHeightCurveLUT_RenderThread();
+
 private:
 	void RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters);
-
+	
 	
 	FTextureRHIRef DensityRHI;
 	FTextureRHIRef VelocityRHI;
@@ -187,5 +196,9 @@ private:
 	// Curl Noise Using Texture
 	FTextureRHIRef CurlNoiseRHI;
 	TRefCountPtr<IPooledRenderTarget> CurlNoisePooledRT;
-
+	
+	// Height Atteunation Resource 
+	TUniquePtr<FHeightCurveLUTResource> HeightCurveResource;
+	TRefCountPtr<IPooledRenderTarget> HeightCurvePooledRT;
+	
 };

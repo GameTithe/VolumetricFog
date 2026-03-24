@@ -7,6 +7,7 @@
 #include "GlobalShader.h"
 #include "VolumetricFluidFog.h"
 #include "Components/BoxComponent.h"
+#include "Curves/CurveFloat.h"
 
 
 // ======== Fluid Resource ========
@@ -129,6 +130,14 @@ void UFluidSimulationComponent::BeginPlay()
         FogExtension->FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
         FogExtension->FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
     }
+	
+	// Curve Data 
+	bHeightCurveDirty = true;
+	if (HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation)
+	{
+		PushHeightCurveSamplesToFogExtension();
+		bHeightCurveDirty = false;
+	}
 }
 
 
@@ -210,7 +219,12 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 
         // Height Attenuation Mode
         FogExtension->HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
-        
+        if (HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation)
+        {
+	        PushHeightCurveSamplesToFogExtension();
+        	bHeightCurveDirty = false;
+        }
+		
         //Legacy
 		FogExtension->HeightFalloff        = HeightFalloff;
 
@@ -296,11 +310,82 @@ bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVec
     return true;
 }
 
+TArray<float> UFluidSimulationComponent::BuildHeightCurveSamples() const
+{
+	const int32 LUTWidth = FMath::Max(HeightCurveLUTResolution, 2);
+	
+	TArray<float> Samples;
+	Samples.SetNumUninitialized(LUTWidth);
+	
+	float MinTime = 0.0f;
+	float MaxTime = 1.0f;
+	
+	if (HeightAttenuationCurve)
+	{
+		HeightAttenuationCurve->FloatCurve.GetTimeRange(MinTime, MaxTime);
+		
+		if (FMath::IsNearlyZero(MinTime, MaxTime))
+		{
+			MaxTime = MinTime + 1.0f;
+		}
+	}
+	
+	for (int32 X = 0; X < LUTWidth; ++X)
+	{
+		const float U = LUTWidth > 1 ? static_cast<float>(X) / static_cast<float>(LUTWidth - 1)  : 0.0f;
+		const float CurveTime = FMath::Lerp(MinTime, MaxTime, U);
+		
+		Samples[X] = HeightAttenuationCurve ? HeightAttenuationCurve->GetFloatValue(CurveTime) : (1.0f - U); 
+	}
+	
+	return Samples;
+}
+
+void UFluidSimulationComponent::PushHeightCurveSamplesToFogExtension()
+{
+	if (!FogExtension.IsValid())
+	{
+		return;
+	}
+
+	TArray<float> Samples = BuildHeightCurveSamples();
+	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> LocalFogExtension = FogExtension;
+
+	ENQUEUE_RENDER_COMMAND(FPushFogHeightCurveSamples)(
+			[LocalFogExtension, Samples = MoveTemp(Samples)](FRHICommandListImmediate& RHICmdList) mutable
+			{
+					if (LocalFogExtension.IsValid())
+					{
+							LocalFogExtension->UpdateHeightCurveLUT_RenderThread(RHICmdList, MakeArrayView(Samples));
+					}
+			});
+}
+
+void UFluidSimulationComponent::ReleaseHeightCurveFromFogExtension()
+{ 
+	if (!FogExtension.IsValid())
+	{
+		return;
+	}
+
+	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> LocalFogExtension = FogExtension;
+
+	ENQUEUE_RENDER_COMMAND(FReleaseFogHeightCurve)(
+			[LocalFogExtension](FRHICommandListImmediate& RHICmdList)
+			{
+					if (LocalFogExtension.IsValid())
+					{
+							LocalFogExtension->ReleaseHeightCurveLUT_RenderThread();
+					}
+			});
+}
+
+
 void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
- 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources, FTextureRenderTargetResource* RTResource,
- 	float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
- 	FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
- 	float InVorticityStrength, float InVisc, int32 InPressureIterations, int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
+                                                  TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources, FTextureRenderTargetResource* RTResource,
+                                                  float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
+                                                  FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
+                                                  float InVorticityStrength, float InVisc, int32 InPressureIterations, int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
  {
  	 check(IsInRenderingThread());
   

@@ -7,10 +7,12 @@
 Texture2D SceneColorTexture;
 Texture2D SceneDepthTexture;
 Texture2D CurlNoiseTexture;
+Texture2D HeightCurveTexture;
 
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
 SamplerState CurlNoiseSampler;
+SamplerState HeightCurveSampler;
 
 // Stable Fluid Results
 Texture2D DensityTexture;
@@ -67,6 +69,11 @@ float3 SimulationExtents;
 
 // Debug Mode
 int FogDebugMode;
+
+static const int HEIGHT_MODE_LEGACY = 0;
+static const int HEIGHT_MODE_ADAPTIVE = 1;
+static const int HEIGHT_MODE_CURVELUT = 2;
+
 
 // 스크린 UV -> 월드 방향 벡터 생성
 // Depth Buffer에서 실제 위치를 복원하는 함수
@@ -209,6 +216,31 @@ bool RayBoxIntersect(float3 RayOrigin, float3 RayDir, float3 BoxMin, float3 BoxM
     return tEntry <= tExit;
 }
 
+float SampleHeightCurveLUT(float U)
+{
+    return HeightCurveTexture.SampleLevel(
+        HeightCurveSampler,
+        float2(saturate(U), 0.5f), 
+        0.0f).r;
+}
+
+float ComputeCurveHeightAttenuation(float WorldZ)
+{
+    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3F);
+    float HeightRatio =  saturate((WorldZ - FogBaseHeight)/ HeightSpan);
+    
+    if (HeightRatio <=HeightFadeStartRatio)
+    {
+        return 1.0f;
+    }
+    
+    float FadeT = saturate(
+        (HeightRatio - HeightFadeStartRatio) /  max(1.0f - HeightFadeStartRatio, 1e-3f)
+    );
+    
+    return saturate(SampleHeightCurveLUT(FadeT));
+}
+
 float ComputeLegacyHeightAttenuation(float WorldZ)
 {
     float Falloff = max(HeightFalloff, 1e-3f);
@@ -231,11 +263,24 @@ float ComputeAdaptiveHeightAttenuation(float WorldZ)
 
 float ComputeHeightAttenuation(float WorldZ)
 {
-    if(HeightAttenuationMode == 0)
+    if(HeightAttenuationMode == HEIGHT_MODE_LEGACY)
     {
         return ComputeLegacyHeightAttenuation(WorldZ);
     }
+    
+    if (HeightAttenuationMode == HEIGHT_MODE_ADAPTIVE)
+    {
+        return ComputeAdaptiveHeightAttenuation(WorldZ);
+    }
+    
+    if (HeightAttenuationMode == HEIGHT_MODE_CURVELUT)
+    {
+        return ComputeCurveHeightAttenuation(WorldZ);
+    }
+    
     return ComputeAdaptiveHeightAttenuation(WorldZ);
+    
+    
 }
 
 
@@ -279,7 +324,7 @@ float SampleDensity3D(float3 WorldPos)
     
     // 높이 감쇠
     float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
-    HeightAttenuation = max(HeightAttenuation , 1e-3);    
+    HeightAttenuation = max(HeightAttenuation , 0.0f);    
     float Density = Density2D * HeightAttenuation * NoiseFactor * FogDensityMultiplier;
     
     return max(Density, 0.0);

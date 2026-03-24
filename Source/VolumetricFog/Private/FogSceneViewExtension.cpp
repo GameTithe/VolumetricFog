@@ -4,6 +4,7 @@
 #include "RenderGraphUtils.h"
 #include "FogSceneViewExtension.h"
 #include "SceneRendering.h" 
+#include "SystemTextures.h"
 
 IMPLEMENT_GLOBAL_SHADER(FFogFullscreenPS, "/VolumetricFog/Rendering/FogFullscreen.usf", "MainPS", SF_Pixel);
 IMPLEMENT_GLOBAL_SHADER(FFogRayMarchingPS, "/VolumetricFog/Rendering/FogRayMarch.usf", "MainPS", SF_Pixel);
@@ -55,17 +56,24 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
 	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT); 
 	FRDGTextureRef CurlNoiseRDG = GraphBuilder.RegisterExternalTexture(CurlNoisePooledRT);
+	
+	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Create(GraphBuilder);
+	/** HeightCurve가 전송되기 전이면 Fallback texture 사용 */
+	FRDGTextureRef HeightCurveRDG = HeightCurvePooledRT ?  GraphBuilder.RegisterExternalTexture(HeightCurvePooledRT) : SystemTextures.White;
 	 
+	
 	// Shader Params 
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();
 	Params->SceneColorTexture = SceneColor;
 	Params->SceneDepthTexture = SceneDepth;
 	Params->CurlNoiseTexture = CurlNoiseRDG;
+	Params->HeightCurveTexture = HeightCurveRDG;
 
 	Params->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	Params->SceneDepthSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	Params->CurlNoiseSampler = TStaticSamplerState< SF_Bilinear>::GetRHI();
-
+	Params->HeightCurveSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(); 
+	
 	Params->SceneColorViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneColorInput));
 	Params->SceneDepthViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneDepthInput));
 	Params->OutputViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(FogOutput));
@@ -131,5 +139,43 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	
 	AddCopyTexturePass(GraphBuilder, FogOutput.Texture, SceneColor, CopyInfo);
 
+}
+
+void FFogSceneViewExtension::UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList,
+	TConstArrayView<float> Samples)
+{
+	check(IsInRenderingThread());
+	
+	if (Samples.IsEmpty())
+	{
+		ReleaseHeightCurveLUT_RenderThread();
+		return;
+	}
+	
+	const uint32 NewSizeX = static_cast<uint32>(Samples.Num());
+	
+	if (!HeightCurveResource || HeightCurveResource->GetSizeX() != NewSizeX)
+	{
+		ReleaseHeightCurveLUT_RenderThread();
+		
+		HeightCurveResource = MakeUnique<FHeightCurveLUTResource>(NewSizeX);
+		HeightCurveResource->InitRHI(RHICmdList);
+		HeightCurvePooledRT = CreateRenderTarget(HeightCurveResource->GetRHI(), TEXT("FogHeightCurve"));
+	}
+	
+	HeightCurveResource->Update(RHICmdList, Samples);
+}
+
+void FFogSceneViewExtension::ReleaseHeightCurveLUT_RenderThread()
+{
+	check(IsInRenderingThread());
+	
+	HeightCurvePooledRT.SafeRelease();
+	
+	if (HeightCurveResource)
+	{
+		HeightCurveResource->ReleaseResource();
+		HeightCurveResource.Reset();
+	}
 }
  
