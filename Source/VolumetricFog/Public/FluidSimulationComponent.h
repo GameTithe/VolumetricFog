@@ -187,10 +187,18 @@ private:
 	/** Helper Function */
 	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;
 	
+	/** Curve Data를 Array<float> 데이터로 변환 */
 	TArray<float> BuildHeightCurveSamples() const;
+	/** GPU에 변환된 Curve Data Load */
 	void PushHeightCurveSamplesToFogExtension();
+	/** Release Height Curve Data */
 	void ReleaseHeightCurveFromFogExtension();
-
+	
+	/** Curve Data dirty flag */
+	bool bWasUsingCurveAttenuation = false;
+	TWeakObjectPtr<UCurveFloat> LastHeightCurveAsset;
+	int32 LastHeightCurveLUTResolution = 0;
+	
 	/** Resources */
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;
 	

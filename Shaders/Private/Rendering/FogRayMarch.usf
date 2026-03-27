@@ -226,19 +226,23 @@ float SampleHeightCurveLUT(float U)
 
 float ComputeCurveHeightAttenuation(float WorldZ)
 {
-    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3F);
-    float HeightRatio =  saturate((WorldZ - FogBaseHeight)/ HeightSpan);
+    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
+    float HeightRatio = saturate((WorldZ - FogBaseHeight) / HeightSpan);
+    return saturate(SampleHeightCurveLUT(HeightRatio));
     
-    if (HeightRatio <=HeightFadeStartRatio)
-    {
-        return 1.0f;
-    }
-    
-    float FadeT = saturate(
-        (HeightRatio - HeightFadeStartRatio) /  max(1.0f - HeightFadeStartRatio, 1e-3f)
-    );
-    
-    return saturate(SampleHeightCurveLUT(FadeT));
+    // float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3F);
+    // float HeightRatio =  saturate((WorldZ - FogBaseHeight)/ HeightSpan);
+    //
+    // if (HeightRatio <=HeightFadeStartRatio)
+    // {
+    //     return 1.0f;
+    // }
+    //
+    // float FadeT = saturate(
+    //     (HeightRatio - HeightFadeStartRatio) /  max(1.0f - HeightFadeStartRatio, 1e-3f)
+    // );
+    //
+    // return saturate(SampleHeightCurveLUT(FadeT));
 }
 
 float ComputeLegacyHeightAttenuation(float WorldZ)
@@ -325,7 +329,7 @@ float SampleDensity3D(float3 WorldPos)
     // 높이 감쇠
     float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
     HeightAttenuation = max(HeightAttenuation , 0.0f);    
-    float Density = Density2D * HeightAttenuation * NoiseFactor * FogDensityMultiplier;
+    float Density = HeightAttenuation ; // Density2D  * HeightAttenuation *  NoiseFactor * FogDensityMultiplier;
     
     return max(Density, 0.0);
 }

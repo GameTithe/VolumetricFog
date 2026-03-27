@@ -132,13 +132,18 @@ void UFluidSimulationComponent::BeginPlay()
     }
 	
 	// Curve Data 
-	bHeightCurveDirty = true;
-	if (HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation)
+	const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
+	
+	bWasUsingCurveAttenuation = bUseCurveAttenuation;
+	LastHeightCurveAsset = HeightAttenuationCurve;
+	LastHeightCurveLUTResolution = HeightCurveLUTResolution;
+	bHeightCurveDirty = bUseCurveAttenuation;
+	
+	if (bUseCurveAttenuation)
 	{
 		PushHeightCurveSamplesToFogExtension();
 		bHeightCurveDirty = false;
-	}
-}
+	}}
 
 
 void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
@@ -217,13 +222,32 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		FogExtension->bEnable              = bEnableFog;
 		FogExtension->AccumulatedTime      = AccumulatedTime;  
 
-        // Height Attenuation Mode
-        FogExtension->HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
-        if (HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation)
-        {
-	        PushHeightCurveSamplesToFogExtension();
-        	bHeightCurveDirty = false;
-        }
+		// Height Attenuation Mode
+		const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
+		const bool bModeChanged = bWasUsingCurveAttenuation != bUseCurveAttenuation;
+		const bool bCurveAssetChanged = LastHeightCurveAsset.Get() != HeightAttenuationCurve;
+		const bool bCurveResolutionChanged = LastHeightCurveLUTResolution != HeightCurveLUTResolution;
+		
+		FogExtension->HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
+		if (bUseCurveAttenuation)
+		{
+			// 세팅 변한게 있을 때만 reload to GPU
+			if (bModeChanged || bCurveAssetChanged || bCurveResolutionChanged)
+			{ 
+				// 재할당
+				LastHeightCurveAsset = HeightAttenuationCurve;
+				LastHeightCurveLUTResolution = HeightCurveLUTResolution;
+        		
+				PushHeightCurveSamplesToFogExtension();
+				bHeightCurveDirty = false;	
+			}
+		}
+		else if (bModeChanged && bWasUsingCurveAttenuation)
+		{
+			ReleaseHeightCurveFromFogExtension();
+		}
+		bWasUsingCurveAttenuation = bUseCurveAttenuation; 
+		
 		
         //Legacy
 		FogExtension->HeightFalloff        = HeightFalloff;
@@ -320,16 +344,19 @@ TArray<float> UFluidSimulationComponent::BuildHeightCurveSamples() const
 	float MinTime = 0.0f;
 	float MaxTime = 1.0f;
 	
+	// CurveData의 시간 보정
 	if (HeightAttenuationCurve)
 	{
 		HeightAttenuationCurve->FloatCurve.GetTimeRange(MinTime, MaxTime);
 		
-		if (FMath::IsNearlyZero(MinTime, MaxTime))
+		if (FMath::IsNearlyEqual( MinTime,  MaxTime))
 		{
 			MaxTime = MinTime + 1.0f;
 		}
 	}
 	
+	
+	// CurveData의 시간에 맞게 값 보정 
 	for (int32 X = 0; X < LUTWidth; ++X)
 	{
 		const float U = LUTWidth > 1 ? static_cast<float>(X) / static_cast<float>(LUTWidth - 1)  : 0.0f;
@@ -348,6 +375,7 @@ void UFluidSimulationComponent::PushHeightCurveSamplesToFogExtension()
 		return;
 	}
 
+	// Curve Data를 Array<Float>로 받아오기
 	TArray<float> Samples = BuildHeightCurveSamples();
 	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> LocalFogExtension = FogExtension;
 
@@ -705,6 +733,7 @@ void UFluidSimulationComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 	
 	if (FogExtension)
 	{
+		ReleaseHeightCurveFromFogExtension();
 		FogExtension->bEnable = false;
 		FogExtension.Reset();
 	}

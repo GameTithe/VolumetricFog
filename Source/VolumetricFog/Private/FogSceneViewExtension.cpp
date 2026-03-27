@@ -57,9 +57,18 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT); 
 	FRDGTextureRef CurlNoiseRDG = GraphBuilder.RegisterExternalTexture(CurlNoisePooledRT);
 	
-	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Create(GraphBuilder);
+	//const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Create(GraphBuilder);
+	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 	/** HeightCurve가 전송되기 전이면 Fallback texture 사용 */
-	FRDGTextureRef HeightCurveRDG = HeightCurvePooledRT ?  GraphBuilder.RegisterExternalTexture(HeightCurvePooledRT) : SystemTextures.White;
+	FRDGTextureRef HeightCurveRDG;
+	if (HeightCurvePooledRT)
+	{
+		HeightCurveRDG = GraphBuilder.RegisterExternalTexture(HeightCurvePooledRT);
+	}
+	else
+	{
+		HeightCurveRDG = SystemTextures.White;
+	}
 	 
 	
 	// Shader Params 
@@ -144,8 +153,11 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 void FFogSceneViewExtension::UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList,
 	TConstArrayView<float> Samples)
 {
+	
+	// RenderThread가 아니면 assert 
 	check(IsInRenderingThread());
 	
+	// Sampling할게 없으면 Release
 	if (Samples.IsEmpty())
 	{
 		ReleaseHeightCurveLUT_RenderThread();
@@ -154,6 +166,8 @@ void FFogSceneViewExtension::UpdateHeightCurveLUT_RenderThread(FRHICommandListIm
 	
 	const uint32 NewSizeX = static_cast<uint32>(Samples.Num());
 	
+	// Height Curve Resource에 문제가 있으면 Release 후,
+	// Height Curve Resource 재생성 및 초기화
 	if (!HeightCurveResource || HeightCurveResource->GetSizeX() != NewSizeX)
 	{
 		ReleaseHeightCurveLUT_RenderThread();
