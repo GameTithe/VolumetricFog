@@ -220,8 +220,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	if (FogExtension)
 	{
 		FogExtension->bEnable              = bEnableFog;
-		FogExtension->AccumulatedTime      = AccumulatedTime;  
-
+		
 		// Height Attenuation Mode
 		const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
 		const bool bModeChanged = bWasUsingCurveAttenuation != bUseCurveAttenuation;
@@ -260,18 +259,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		FogExtension->Absorption           = Absorption;
 		FogExtension->FogColor             = FVector3f(FogColor.R, FogColor.G, FogColor.B);
 		FogExtension->NumSteps             = NumSteps;
-		FogExtension->MaxRayDistance       = MaxRayDistance;
-		
-        FogExtension->CurlNoiseScale       = CurlNoiseScale;
-		FogExtension->CurlNoiseSpeed       = CurlNoiseSpeed;
-		FogExtension->CurlDistortStrength  = CurlDistortStrength;
-
-        FogExtension->CurlTexScale = CurlTexScale;
-        FogExtension->CurlTexSpeed = CurlTexSpeed;
-        FogExtension->CurlTexStrength = CurlTexStrength; 
-
-		FogExtension->VelocityDistortStrength = VelocityDistortStrength;
-		FogExtension->BaseNoiseScale       = BaseNoiseScale;
+		FogExtension->MaxRayDistance       = MaxRayDistance; 
 
         FVector BoundsOrigin, BoundsExtents;
         if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
@@ -288,24 +276,15 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		// 렌더스레드에 Density/Velocity 텍스처 전달
 		auto Ext = FogExtension;
 		auto Res = FluidResources;
-		int32 CurDen = DenIndex;
-		int32 CurVel = VelIndex;
-
-        FTextureRHIRef CurlTexRHI = nullptr;
-        if (CurlNoiseTexture && CurlNoiseTexture->GetResource())
-        {
-            CurlTexRHI = CurlNoiseTexture->GetResource()->TextureRHI;
-        }
+		int32 CurDen = DenIndex; 
 
 		ENQUEUE_RENDER_COMMAND(FUpdateFogTextures)(
-			[Ext, Res, CurDen, CurVel, CurlTexRHI](FRHICommandListImmediate&
+			[Ext, Res, CurDen](FRHICommandListImmediate&
 	RHICmdList)
 			{
 				if (Res->bInitialize)
 				{
-					Ext->SetDensityRHI(Res->Density[CurDen]);
-					Ext->SetVelocityRHI(Res->Velocity[CurVel]);
-                    Ext->SetCurlNoiseRHI(CurlTexRHI);
+					Ext->SetDensityRHI(Res->Density[CurDen]); 
 				}
 			}
 		);

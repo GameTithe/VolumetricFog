@@ -1,22 +1,17 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
-//#include "/VolumetricFog/Rendering/CurlNoise.ush"
-
 // Scene Textures
 Texture2D SceneColorTexture;
 Texture2D SceneDepthTexture;
-Texture2D CurlNoiseTexture;
 Texture2D HeightCurveTexture;
 
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
-SamplerState CurlNoiseSampler;
 SamplerState HeightCurveSampler;
 
 // Stable Fluid Results
 Texture2D DensityTexture;
-Texture2D VelocityTexture;
 SamplerState BilinearSampler;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
@@ -49,19 +44,6 @@ float Absorption;
 float3 FogColor;
 int NumSteps;
 float MaxRayDistance;
-
-// Curl Noise
-float CurlNoiseScale;
-float CurlNoiseSpeed;
-float CurlDistortStrength;
-float VelocityDistortStrength;
-float BaseNoiseScale;
-float Time;
-
-// Curl Noise Texture
-float CurlTexScale;
-float CurlTexSpeed;
-float CurlTexStrength;
 
 // Simulation Bouning Box
 float3 SimulationCenter;
@@ -283,11 +265,7 @@ float ComputeHeightAttenuation(float WorldZ)
     }
     
     return ComputeAdaptiveHeightAttenuation(WorldZ);
-    
-    
 }
-
-
 
 float SampleDensity3D(float3 WorldPos)
 {
@@ -309,35 +287,12 @@ float SampleDensity3D(float3 WorldPos)
     {
         return 0.0f;
     } 
-    // 유체 속도 + Curl 왜곡
-    //float2 Vel2D = VelocityTexture.Sample(BilinearSampler, SimUV).rg; 
-    ////float3 curl = CurlNoise3D(WorldPos * CurlNoiseScale + float3(0.0f, 0.0f, Time * CurlNoiseSpeed));
-    //float2 UV = WorldPos.xy * CurlTexScale + float2(Time * CurlTexSpeed, 0);
-    //float2 Flow = CurlNoiseTexture.Sample(CurlNoiseSampler, UV).rg * 2.0f - 1.0f; 
-    //float3 DistortedPos = WorldPos
-    //+ float3(Vel2D * VelocityDistortStrength, 0.0f)
-    //+ float3(Flow * CurlTexStrength, 0.0f);
-    ////+ curl * CurlDistortStrength; 
-     
-    float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z)); 
-    // 1 / 30 
-    float Demsity01 = saturate(RawDensity2D * 0.01f);
     
-    return Demsity01 * HeightMask; 
-
-    // Curve Data 사용 
-    //float Density = CompDensity * HeightMask * FogDensityMultiplier;
-    //return max(Density, 0.0f);
+    // Curve Data 사용    
+    float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));  
+    float Demsity01 = saturate(RawDensity2D * 0.01f); 
     
-     
-    //// 높이 감쇠
-    //float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
-    //HeightAttenuation = max(HeightAttenuation , 0.0f);    
-    ////float Density = HeightAttenuation ; 
-    ////float Density = Density2D  * HeightAttenuation *  NoiseFactor * FogDensityMultiplier;
-    //float Density = Density2D  * HeightAttenuation * FogDensityMultiplier; //  NoiseFactor * 
-    //
-    //return max(Density, 0.0);
+    return Demsity01 * HeightMask * FogDensityMultiplier; 
 }
 
 // 3D Like 2D

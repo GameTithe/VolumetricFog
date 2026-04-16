@@ -30,11 +30,10 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !VelocityRHI || !DensityPooledRT || !VelocityPooledRT || !CurlNoisePooledRT)
+	if (!bEnable || !DensityRHI || !DensityPooledRT)
 	{
 		return;
 	}
-
 	FRDGTextureRef SceneColor = InParameters.ColorTexture;
 	FRDGTextureRef SceneDepth = InParameters.DepthTexture;
 
@@ -54,9 +53,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	 
 	// 캐싱된 PooledRT를 RDG에 등록
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
-	FRDGTextureRef VelocityRDG = GraphBuilder.RegisterExternalTexture(VelocityPooledRT); 
-	FRDGTextureRef CurlNoiseRDG = GraphBuilder.RegisterExternalTexture(CurlNoisePooledRT);
-	
+
 	//const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Create(GraphBuilder);
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 	/** HeightCurve가 전송되기 전이면 Fallback texture 사용 */
@@ -75,12 +72,10 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();
 	Params->SceneColorTexture = SceneColor;
 	Params->SceneDepthTexture = SceneDepth;
-	Params->CurlNoiseTexture = CurlNoiseRDG;
 	Params->HeightCurveTexture = HeightCurveRDG;
 
 	Params->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	Params->SceneDepthSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	Params->CurlNoiseSampler = TStaticSamplerState< SF_Bilinear>::GetRHI();
 	Params->HeightCurveSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(); 
 	
 	Params->SceneColorViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneColorInput));
@@ -88,7 +83,6 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->OutputViewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(FogOutput));
 
 	Params->DensityTexture  = DensityRDG;
-	Params->VelocityTexture = VelocityRDG;
 	Params->BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp>::GetRHI();
 
 	Params->InvViewProjectionMatrix = FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
@@ -102,23 +96,11 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->FogMaxHeight         = FogMaxHeight;
 	Params->HeightFalloff        = HeightFalloff;
 
-
 	Params->FogDensityMultiplier = FogDensityMultiplier;
 	Params->Absorption           = Absorption;
 	Params->FogColor             = FogColor;
 	Params->NumSteps             = NumSteps;
 	Params->MaxRayDistance       = MaxRayDistance;
-
-	Params->CurlTexScale = CurlTexScale;
-	Params->CurlTexSpeed = CurlTexSpeed;
-	Params->CurlTexStrength = CurlTexStrength;
-
-	Params->CurlNoiseScale         = CurlNoiseScale;
-	Params->CurlNoiseSpeed         = CurlNoiseSpeed;
-	Params->CurlDistortStrength    = CurlDistortStrength;
-	Params->VelocityDistortStrength = VelocityDistortStrength;
-	Params->BaseNoiseScale         = BaseNoiseScale;
-	Params->Time                   = AccumulatedTime;
  
 	Params->SimulationCenter = SimulationCenter;
 	Params->SimulationExtents = SimulationExtents;

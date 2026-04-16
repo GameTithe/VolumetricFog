@@ -18,17 +18,14 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HeightCurveTexture)
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, HeightCurveSampler)
 		
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VelocityTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
@@ -55,17 +52,6 @@ public:
         SHADER_PARAMETER(FVector3f, FogColor)
         SHADER_PARAMETER(int, NumSteps)
         SHADER_PARAMETER(float, MaxRayDistance)
-
-        SHADER_PARAMETER(float, CurlNoiseScale)
-        SHADER_PARAMETER(float, CurlNoiseSpeed)
-        SHADER_PARAMETER(float, CurlDistortStrength)
-        SHADER_PARAMETER(float, VelocityDistortStrength)
-        SHADER_PARAMETER(float, BaseNoiseScale)
-        SHADER_PARAMETER(float, Time)
-
-		SHADER_PARAMETER(float, CurlTexScale)
-		SHADER_PARAMETER(float, CurlTexSpeed)
-		SHADER_PARAMETER(float, CurlTexStrength)
  
         SHADER_PARAMETER(FVector3f, SimulationCenter)
         SHADER_PARAMETER(FVector3f, SimulationExtents)
@@ -120,23 +106,7 @@ public:
 			DensityRHI = InTex;
 			DensityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogDensity")) : nullptr;
 		}
-	}
-	void SetVelocityRHI(FTextureRHIRef InTex)
-	{
-		if (VelocityRHI != InTex)
-		{
-			VelocityRHI = InTex;
-			VelocityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogVelocity")) : nullptr;
-		}
-	}
-	void SetCurlNoiseRHI(FTextureRHIRef InTex)
-	{
-		if (CurlNoiseRHI != InTex)
-		{
-			CurlNoiseRHI = InTex;
-			CurlNoisePooledRT = InTex ? CreateRenderTarget(InTex, TEXT("CurlNoise")) : nullptr;
-		}
-	}
+	} 
 	 
 	bool bEnable = false;
 	
@@ -158,44 +128,24 @@ public:
 	// Adaptive Height Attenuation
 	float HeightFadeStartRatio = 0.5f;
 	float HeightFadeStrength = 1.0f; 
-	 
-	// Curl Noise Parameters 
-	float CurlNoiseScale         = 0.003f;
-	float CurlNoiseSpeed         = 0.1f;
-	float CurlDistortStrength    = 1.0f;
-	float VelocityDistortStrength = 0.5f;
-	float BaseNoiseScale         = 0.01f;
-	float AccumulatedTime        = 0.f;
 	
-	float CurlTexScale = 0.006f;
-	float CurlTexSpeed = 0.12f;
-	float CurlTexStrength = 40.0f;
-
 	FVector3f SimulationCenter	= FVector3f::ZeroVector;
 	FVector3f SimulationExtents = FVector3f(3.0f, 3.0f, 3.0f);
 
 	// Debug Parameter 
-	int32 FogDebugMode = 1;
-	
+	int32 FogDebugMode = 1; 
 	
 	void UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList, TConstArrayView<float> Samples);
 	void ReleaseHeightCurveLUT_RenderThread();
 
 private:
 	void RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters);
-	
-	
-	FTextureRHIRef DensityRHI;
-	FTextureRHIRef VelocityRHI;
-
-	TRefCountPtr<IPooledRenderTarget> DensityPooledRT;
-	TRefCountPtr<IPooledRenderTarget> VelocityPooledRT;
-
-	FDelegateHandle PostOpaqueDelegateHandle;
 	 
-	// Curl Noise Using Texture
-	FTextureRHIRef CurlNoiseRHI;
-	TRefCountPtr<IPooledRenderTarget> CurlNoisePooledRT;
+	FTextureRHIRef DensityRHI; 
+
+	TRefCountPtr<IPooledRenderTarget> DensityPooledRT; 
+
+	FDelegateHandle PostOpaqueDelegateHandle; 
 	
 	// Height Atteunation Resource 
 	TUniquePtr<FHeightCurveLUTResource> HeightCurveResource;

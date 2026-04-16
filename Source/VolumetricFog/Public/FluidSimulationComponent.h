@@ -133,33 +133,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float MaxRayDistance = 5000.f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	TObjectPtr<UTexture2D> CurlNoiseTexture;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlTexScale = 0.006f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlTexSpeed = 0.12f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlTexStrength = 40.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlNoiseScale = 0.003f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float CurlNoiseSpeed = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
-	float CurlDistortStrength = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise", meta = (ClampMin = "0.0"))
-	float VelocityDistortStrength = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|CurlNoise")
-	float BaseNoiseScale = 0.01f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float SimulationWorldSize = 5000.f;
