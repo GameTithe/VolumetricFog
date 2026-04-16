@@ -304,34 +304,40 @@ float SampleDensity3D(float3 WorldPos)
         return 0.0f;
     }
     
-    float Density2D = DensityTexture.Sample(BilinearSampler, SimUV).r;
-    if(Density2D <= 1e-6)
+    float RawDensity2D = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
+    if (RawDensity2D <= 1e-6)
     {
         return 0.0f;
-    }
-    
+    } 
     // 유체 속도 + Curl 왜곡
-    float2 Vel2D = VelocityTexture.Sample(BilinearSampler, SimUV).rg; 
-    //float3 curl = CurlNoise3D(WorldPos * CurlNoiseScale + float3(0.0f, 0.0f, Time * CurlNoiseSpeed));
-    float2 UV = WorldPos.xy * CurlTexScale + float2(Time * CurlTexSpeed, 0);
-    float2 Flow = CurlNoiseTexture.Sample(CurlNoiseSampler, UV).rg * 2.0f - 1.0f;
+    //float2 Vel2D = VelocityTexture.Sample(BilinearSampler, SimUV).rg; 
+    ////float3 curl = CurlNoise3D(WorldPos * CurlNoiseScale + float3(0.0f, 0.0f, Time * CurlNoiseSpeed));
+    //float2 UV = WorldPos.xy * CurlTexScale + float2(Time * CurlTexSpeed, 0);
+    //float2 Flow = CurlNoiseTexture.Sample(CurlNoiseSampler, UV).rg * 2.0f - 1.0f; 
+    //float3 DistortedPos = WorldPos
+    //+ float3(Vel2D * VelocityDistortStrength, 0.0f)
+    //+ float3(Flow * CurlTexStrength, 0.0f);
+    ////+ curl * CurlDistortStrength; 
+     
+    float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z)); 
+    // 1 / 30 
+    float Demsity01 = saturate(RawDensity2D * 0.01f);
     
-    float3 DistortedPos = WorldPos
-    + float3(Vel2D * VelocityDistortStrength, 0.0f)
-    + float3(Flow * CurlTexStrength, 0.0f);
-    //+ curl * CurlDistortStrength;
+    return Demsity01 * HeightMask; 
+
+    // Curve Data 사용 
+    //float Density = CompDensity * HeightMask * FogDensityMultiplier;
+    //return max(Density, 0.0f);
     
-    // base noise   
-    //float N = GradientNoise3D(DistortedPos * BaseNoiseScale);
-    //float NoiseFactor = lerp(0.7, 1.3, saturate(N));
-    float NoiseFactor = 1.0f;
-    
-    // 높이 감쇠
-    float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
-    HeightAttenuation = max(HeightAttenuation , 0.0f);    
-    float Density = HeightAttenuation ; // Density2D  * HeightAttenuation *  NoiseFactor * FogDensityMultiplier;
-    
-    return max(Density, 0.0);
+     
+    //// 높이 감쇠
+    //float HeightAttenuation = ComputeHeightAttenuation(WorldPos.z);
+    //HeightAttenuation = max(HeightAttenuation , 0.0f);    
+    ////float Density = HeightAttenuation ; 
+    ////float Density = Density2D  * HeightAttenuation *  NoiseFactor * FogDensityMultiplier;
+    //float Density = Density2D  * HeightAttenuation * FogDensityMultiplier; //  NoiseFactor * 
+    //
+    //return max(Density, 0.0);
 }
 
 // 3D Like 2D
@@ -518,7 +524,6 @@ void MainPS(
     IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scaterring);
     
     float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
-    OutColor = float4(FinalColor, SceneColor.a);
-
+    OutColor = float4(FinalColor, SceneColor.a); 
 }
 
