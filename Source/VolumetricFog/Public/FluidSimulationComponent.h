@@ -143,6 +143,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (ClampMin = "32", ClampMax = "1024", EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
 	int32 HeightCurveLUTResolution = 256;
  
+	// ======== Curl Noise ========
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl")
+	TObjectPtr<UTexture2D> CurlNoiseTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl")
+	float CurlSimulationTiling = 6.0f;
+	 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl")
+	float CurlSimulationSpeed = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl", meta = (ClampMin = "0.0"))
+	float CurlVelocityStrength = 3.0f; 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl", meta = (ClampMin = "0.0"))
+	float CurlDensityMaskScale = 0.15f;
 
 	UPROPERTY()
 	bool bHeightCurveDirty = false;
@@ -196,6 +211,12 @@ private:
 	 	float InForceStrength,
 	 	float InDensityAmount,
 	 	float InDissipation,
+		FTextureRHIRef InCurlNoiseTexture,
+		float InSimulationTime,
+		float InCurlSiumlationTiling,
+		float InCurlSimulationSpeed,
+		float InCurlVelocityStrength,
+		float InCurlDensityMaskScale,
 	 	float InVorticityStrength,
 	 	float InVisc,
 	 	int32 InPressureIterations,

@@ -8,7 +8,7 @@
 #include "VolumetricFluidFog.h"
 #include "Components/BoxComponent.h"
 #include "Curves/CurveFloat.h"
-
+#include "RHIBreadcrumbs.h"
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -192,9 +192,23 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	int32* DenIdxPtr = &DenIndex;
 	int32* PresIdxPtr = &PresIndex;
 
+    float SimTime = AccumulatedTime + DeltaTime;
+    float CurlTiling = CurlSimulationTiling;
+    float CurlSpeed = CurlSimulationSpeed;
+    float CurlStrength = CurlVelocityStrength;
+    float CurlMaskScale = CurlDensityMaskScale;
+
+    FTextureRHIRef CurlSimulationTexRHI = nullptr;
+    if (CurlNoiseTexture && CurlNoiseTexture->GetResource())
+    {
+        CurlSimulationTexRHI = CurlNoiseTexture->GetResource()->TextureRHI;
+    }
+
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
 	[ this, Resources, RTResource, DT,
-		FP, FD, FR, FS, DA, Diss, Vortiy, Visc, PresItr, CurVelIdx, CurDenIdx, CurPresIdx,
+		FP, FD, FR, FS, DA, Diss, 
+        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
+        Vortiy, Visc, PresItr, CurVelIdx, CurDenIdx, CurPresIdx,
 		VelIdxPtr, DenIdxPtr, PresIdxPtr](FRHICommandListImmediate& RHICmdList)
 	{
 		if (!Resources->bInitialize)
@@ -203,10 +217,20 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		}
 
 		int32 OutVelIdx = CurVelIdx, OutDenIdx = CurDenIdx, OutPrsIdx = CurPresIdx;
+         
+        /*        
+		FTextureRHIRef& InCurlNoiseTexture,
+		float InSimulationTime,
+		float InCurlTiling,
+		float InCurlSimulationSpeed,
+		float InCurlVelocityStrength,
+        */
 
 		ExecuteSimulation(RHICmdList, Resources, RTResource,
 			DT,CurVelIdx, CurDenIdx, CurPresIdx,
-					   FP, FD, FR, FS, DA, Diss, Vortiy, Visc, PresItr,
+					   FP, FD, FR, FS, DA, Diss, 
+                       CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
+                       Vortiy, Visc, PresItr,
 					   OutVelIdx, OutDenIdx, OutPrsIdx); 
 
 		*VelIdxPtr = OutVelIdx;
@@ -392,6 +416,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
                                                   TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources, FTextureRenderTargetResource* RTResource,
                                                   float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
                                                   FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
+                                                  FTextureRHIRef InCurlNoiseTexture, float InSimulationTime, float InCurlSimulationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength, float InCurlDensityMaskScale,
                                                   float InVorticityStrength, float InVisc, int32 InPressureIterations, int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
  {
  	 check(IsInRenderingThread());
@@ -404,15 +429,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	 const float Dx = 1.0f / (float)Resolution;
  	 const float HalfInvDx = 0.5f * (float)Resolution;
  	 const FVector2f InvResolution(Dx, Dx);
- 	//const float Dx = 1.0f;
- 	//const float HalfInvDx = 0.5f;
- 	//const FVector2f InvResolution(1.0f / (float)Resolution, 1.0f / (float)Resolution);
-
- 	//const float Dx = 1.0f;
- 	 //const float HalfInvDx = 0.5f;
- 	 //const FVector2f InvResolution(1.0f / (float)Resolution, 1.0f / (float)Resolution);
-  
-
+ 
  	 const FIntPoint ResolutionPt(Resolution, Resolution);
  	 const FIntVector GroupCount(
  	 	FMath::DivideAndRoundUp(Resolution, 8), // 8: Num of Computer Shader Threads 
@@ -435,6 +452,8 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
   
  	 // Step 1: Advect Velocity
  	 {
+         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectVelocity");
+
  	 	int32 NextVelIdx = 1 - CurVelIdx;
   
  	 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
@@ -527,6 +546,9 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	    }
  	 // Step 4: Force
  	 {
+
+        RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.Force");
+
  	 	int32 NextVelIdx = 1 - CurVelIdx;
  	 	int32 NextDenIdx = 1 - CurDenIdx;
  	 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
@@ -547,6 +569,13 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	 	Params.DensityAmount  = InDensityAmount;
  	 	Params.DeltaTime      = DeltaTime;
  	 	Params.Dissipation    = InDissipation;
+        Params.CurlNoiseTexture = InCurlNoiseTexture;
+        Params.CurlNoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
+        Params.Time = InSimulationTime;
+        Params.CurlSimulationTiling = InCurlSimulationTiling;
+        Params.CurlSimulationSpeed = InCurlSimulationSpeed;
+        Params.CurlVelocityStrength = InCurlVelocityStrength;
+        Params.CurlDensityMaskScale = InCurlDensityMaskScale;
  	 	Params.InvResolution  = InvResolution;
  	 	Params.Resolution     = ResolutionPt;
   
@@ -557,6 +586,8 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	
  	 // Step 5: Divergence
  	 {
+         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.Divergence");
+
  	 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
  	 	ToUAV(InFluidResources->Divergence);
   
@@ -606,6 +637,8 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	
  	 // Step 7: Gradient Subtract — velocity
  	 {
+         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.GradientSubtract");
+
  	 	int32 NextVelIdx = 1 - CurVelIdx;
  	 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
  	 	ToSRV(InFluidResources->Pressure[CurPresIdx]);
@@ -663,6 +696,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	//}
  	 // Step 9: Advect Density
  	 {
+         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectDensity");
  	 	int32 NextDenIdx = 1 - CurDenIdx;
  	 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
  	 	ToSRV(InFluidResources->Density[CurDenIdx]);
@@ -686,6 +720,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	 // Step 9: Density -> OutputRT 복사
      if (RTResource)
  	 {
+         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectDensity");
  	 	FTextureRHIRef OutputRHI = RTResource->GetRenderTargetTexture();
  	 	if (OutputRHI)
  	 	{

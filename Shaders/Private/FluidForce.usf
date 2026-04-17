@@ -5,6 +5,12 @@ Texture2D<float2> VelocityInput;
 RWTexture2D<float> DensityOutput;
 RWTexture2D<float2> VelocityOutput;
 
+//Curl
+Texture2D<float4> CurlNoiseTexture;
+SamplerState CurlNoiseSampler; 
+
+float Time;
+
 float2 ForcePosition;   // UV Pos
 float2 ForceDirection;
 float ForceRadius;
@@ -12,6 +18,13 @@ float ForceStrength;
 float DensityAmount;
 float DeltaTime;
 float Dissipation;  //밀도 감쇠
+
+//Curl
+float CurlSimulationTiling;
+float CurlSimulationSpeed;
+float CurlVelocityStrength;
+float CurlDensityMaskScale;
+
 
 float2 InvResolution;
 int2 Resolution;
@@ -32,15 +45,38 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     float Dist = length(UV - ForcePosition);
     float Influence = exp(-(Dist * Dist) / (2.0 * ForceRadius * ForceRadius));
     
-    // Velocity에 힘 추가
-    Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
-     
-    // Density에 소스 추가
-    Density += DensityAmount * Influence * DeltaTime;
+    // 이번 프레임에 Density를 계산( Density 가 존재하는 곳에만 turbulence(난류) 적용 예정
+    float AddedDensity = DensityAmount * Influence * DeltaTime;
+    float NewDensity = (Density + AddedDensity) * Dissipation;
     
-    // Dissipation 추가
-    Density *= Dissipation;
+    // 기존 외력
+    Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
+
+    // CurlNoise -> Velocity Force
+    float2 NoiseUV = frac(UV * CurlSimulationTiling + float2(CurlSimulationSpeed * Time, CurlSimulationSpeed * Time));
+     
+    // xy 평면에서의 simulation이기에 rg만 받아오면서, [0,1] to [-1,1]
+    float2 CurlFlow = CurlNoiseTexture.SampleLevel(CurlNoiseSampler, NoiseUV, 0).rg * 2.0f - 1.0f;
+    
+    float DensityMask = saturate(NewDensity * CurlDensityMaskScale);
+    Vel += CurlFlow * CurlVelocityStrength * DensityMask * DeltaTime;
+    
+    // TODO: 경계부분에서 Velocity가 과도하게 쌓이지 않도록 처리
+    
+    //Vel += CurlFlow * CurlVelocityStrength * DeltaTime;
     
     VelocityOutput[DTid.xy] = Vel;
-    DensityOutput[DTid.xy] = Density; 
+    DensityOutput[DTid.xy] = NewDensity;
+    
+    // Velocity에 힘 추가
+    //Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
+    // 
+    //// Density에 소스 추가
+    //Density += DensityAmount * Influence * DeltaTime;
+    //
+    //// Dissipation 추가
+    //Density *= Dissipation;
+    //
+    //VelocityOutput[DTid.xy] = Vel;
+    //DensityOutput[DTid.xy] = Density; 
 }

@@ -103,13 +103,25 @@ public:
 		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
 		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+
 		SHADER_PARAMETER(FVector2f, ForcePosition)
 		SHADER_PARAMETER(FVector2f, ForceDirection)
+
 		SHADER_PARAMETER(float, ForceRadius)
 		SHADER_PARAMETER(float, ForceStrength)
 		SHADER_PARAMETER(float, DensityAmount)
 		SHADER_PARAMETER(float, DeltaTime)
 		SHADER_PARAMETER(float, Dissipation)
+
+		//Curl Noise
+		SHADER_PARAMETER_TEXTURE(Texture2D, CurlNoiseTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
+		SHADER_PARAMETER(float, Time)
+		SHADER_PARAMETER(float, CurlSimulationTiling)
+		SHADER_PARAMETER(float, CurlSimulationSpeed)
+		SHADER_PARAMETER(float, CurlVelocityStrength)
+		SHADER_PARAMETER(float, CurlDensityMaskScale)
+		
 		SHADER_PARAMETER(FVector2f, InvResolution)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 	END_SHADER_PARAMETER_STRUCT()
