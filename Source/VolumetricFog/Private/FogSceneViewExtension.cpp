@@ -30,10 +30,13 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	if (!bEnable || !DensityRHI || !DensityPooledRT)
+	const FFluidFogRenderState& State = RenderState;
+	
+	if (!State.bEnable || !State.DensityTexture || !DensityPooledRT)
 	{
 		return;
 	}
+	
 	FRDGTextureRef SceneColor = InParameters.ColorTexture;
 	FRDGTextureRef SceneDepth = InParameters.DepthTexture;
 
@@ -88,25 +91,25 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->InvViewProjectionMatrix = FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
 	Params->CameraPosition = FVector3f(View.ViewMatrices.GetViewOrigin());
 
-	Params->HeightAttenuationMode = HeightAttenuationMode;
-	Params->HeightFadeStartRatio = HeightFadeStartRatio;
-	Params->HeightFadeStrength = HeightFadeStrength;
+	Params->HeightAttenuationMode = State.HeightAttenuationMode;
+	Params->HeightFadeStartRatio = State.HeightFadeStartRatio;
+	Params->HeightFadeStrength = State.HeightFadeStrength;
 
-	Params->FogBaseHeight        = FogBaseHeight;
-	Params->FogMaxHeight         = FogMaxHeight;
-	Params->HeightFalloff        = HeightFalloff;
+	Params->FogBaseHeight        = State.FogBaseHeight;
+	Params->FogMaxHeight         = State.FogMaxHeight;
+	Params->HeightFalloff        = State.HeightFalloff;
 
-	Params->FogDensityMultiplier = FogDensityMultiplier;
-	Params->Absorption           = Absorption;
-	Params->FogColor             = FogColor;
-	Params->NumSteps             = NumSteps;
-	Params->MaxRayDistance       = MaxRayDistance;
+	Params->FogDensityMultiplier = State.FogDensityMultiplier;
+	Params->Absorption           = State.Absorption;
+	Params->FogColor             = State.FogColor;
+	Params->NumSteps             = State.NumSteps;
+	Params->MaxRayDistance       = State.MaxRayDistance;
  
-	Params->SimulationCenter = SimulationCenter;
-	Params->SimulationExtents = SimulationExtents;
+	Params->SimulationCenter	= State.SimulationCenter;
+	Params->SimulationExtents	= State.SimulationExtents;
 
 	
-	Params->FogDebugMode = FogDebugMode;
+	Params->FogDebugMode = State.FogDebugMode;
 	
 	// Scene Color에 직접 합성 
 	//Params->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);
@@ -132,8 +135,29 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 
 }
 
+void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRenderState& InState)
+{
+	check(IsInRenderingThread());
+	
+	const bool bDensityChanged = (RenderState.DensityTexture != InState.DensityTexture);
+	
+	RenderState = InState;
+	
+	if (RenderState.DensityTexture)
+	{
+		if (bDensityChanged || !DensityPooledRT)
+		{
+			DensityPooledRT = CreateRenderTarget(RenderState.DensityTexture, TEXT("FogDensity"));
+		}
+	}
+	else
+	{
+		DensityPooledRT.SafeRelease();
+	}
+}
+
 void FFogSceneViewExtension::UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList,
-	TConstArrayView<float> Samples)
+                                                               TConstArrayView<float> Samples)
 {
 	
 	// RenderThread가 아니면 assert 

@@ -91,8 +91,7 @@ float2 WorldToSimulationUV(float2 WorldXY)
 
   float2 GetOutputViewportUV(float4 SvPosition)
   {
-      return (SvPosition.xy - OutputViewport_ViewportMin) *
-  OutputViewport_ViewportSizeInverse;
+      return (SvPosition.xy - OutputViewport_ViewportMin) * OutputViewport_ViewportSizeInverse;
   }
 
   float2 GetSceneColorUV(float2 ViewportUV)

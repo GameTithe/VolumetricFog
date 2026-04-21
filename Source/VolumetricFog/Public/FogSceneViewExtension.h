@@ -86,28 +86,8 @@ public:
 	}
 };
 
-// SceneViewExtension
-class FFogSceneViewExtension : public FSceneViewExtensionBase
+struct FFluidFogRenderState
 {
-public:
-	FFogSceneViewExtension(const FAutoRegister& AutoRegister);
-	virtual ~FFogSceneViewExtension();
-
-	// 필수 오버라이드
-	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override {}
-	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override {}
-	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
-
-	// 외부에서 Render Thread 호출
-	void SetDensityRHI(FTextureRHIRef InTex)
-	{
-		if (DensityRHI != InTex)
-		{
-			DensityRHI = InTex;
-			DensityPooledRT = InTex ? CreateRenderTarget(InTex, TEXT("FogDensity")) : nullptr;
-		}
-	} 
-	 
 	bool bEnable = false;
 	
 	// Fog Parameters
@@ -135,14 +115,32 @@ public:
 	// Debug Parameter 
 	int32 FogDebugMode = 1; 
 	
+	FTextureRHIRef DensityTexture;
+};
+// SceneViewExtension
+class FFogSceneViewExtension : public FSceneViewExtensionBase
+{
+public:
+	FFogSceneViewExtension(const FAutoRegister& AutoRegister);
+	virtual ~FFogSceneViewExtension();
+
+	// 필수 오버라이드
+	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override {}
+	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override {}
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
+	
+	/** Render Thread Helper Function */
+	
+	/** density texture가 바뀌었으면, RDG 등록용 PooledRT 갱신 */
+	void ApplyRenderState_RenderThread(const FFluidFogRenderState& InState);
+	
 	void UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList, TConstArrayView<float> Samples);
 	void ReleaseHeightCurveLUT_RenderThread();
 
 private:
 	void RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters);
-	 
-	FTextureRHIRef DensityRHI; 
 
+	FFluidFogRenderState RenderState;
 	TRefCountPtr<IPooledRenderTarget> DensityPooledRT; 
 
 	FDelegateHandle PostOpaqueDelegateHandle; 
@@ -150,5 +148,4 @@ private:
 	// Height Atteunation Resource 
 	TUniquePtr<FHeightCurveLUTResource> HeightCurveResource;
 	TRefCountPtr<IPooledRenderTarget> HeightCurvePooledRT;
-	
 };

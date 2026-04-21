@@ -9,6 +9,7 @@
 #include "Components/BoxComponent.h"
 #include "Curves/CurveFloat.h"
 #include "RHIBreadcrumbs.h"
+#include "Stats/StatsHierarchical.h"
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -106,30 +107,6 @@ void UFluidSimulationComponent::BeginPlay()
 		OutputRT->InitCustomFormat(SimResolution, SimResolution, PF_R32_FLOAT, true);
 		OutputRT->UpdateResourceImmediate(true);
 	}
-	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
-	FogExtension->bEnable = bEnableFog;
-
-    //FVector BoundsOrigin, BoundsExtent;
-    //GetOwner()->GetActorBounds(false, BoundsOrigin, BoundsExtent);
-    //
-    //FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
-    //
-    //const float MaxExtent = FMath::Max3(BoundsExtent.X, BoundsExtent.Y, BoundsExtent.Z);
-    //FogExtension->SimulationSize = FMath::Max(1.0f, MaxExtent * 2.0f);
-       
-    //FogExtension->SimulationCenter = FVector3f(GetOwner()->GetActorLocation());
-    //FogExtension->SimulationSize = SimulationWorldSize;
-     
-    FVector BoundsOrigin, BoundsExtents;
-    if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
-    {
-        FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
-        FogExtension->SimulationExtents = FVector3f(BoundsExtents);
-
-
-        FogExtension->FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
-        FogExtension->FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
-    }
 	
 	// Curve Data 
 	const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
@@ -139,11 +116,33 @@ void UFluidSimulationComponent::BeginPlay()
 	LastHeightCurveLUTResolution = HeightCurveLUTResolution;
 	bHeightCurveDirty = bUseCurveAttenuation;
 	
+		
+	// Fog Data Snapshot
+	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
+	
+	if (FogExtension.IsValid())
+	{
+		const FFluidFogRenderState InitialState = BuildFogRenderStateSnapShot();
+		auto Ext = FogExtension;
+		
+		ENQUEUE_RENDER_COMMAND(InitFogExtension) 
+		([Ext, InitialState](FRHICommandListImmediate& RHUCmdList)
+		{
+			if (Ext.IsValid())
+			{
+				Ext->ApplyRenderState_RenderThread(InitialState);
+			}
+		});
+	}
+	
+	
 	if (bUseCurveAttenuation)
 	{
 		PushHeightCurveSamplesToFogExtension();
 		bHeightCurveDirty = false;
-	}}
+	}
+	
+}
 
 
 void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
@@ -182,15 +181,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	float Diss = Dissipation;
 	float Vortiy = VorticityStrengthParam;
 	float Visc = Viscosity;
-	int32 PresItr = PressureIterations;
-	int32 CurVelIdx = VelIndex;
-	int32 CurDenIdx = DenIndex;
-	int32 CurPresIdx = PresIndex;
-
-	// 인덱스를 포인터로 전달해서 렌더스레드 결과를 받음
-	int32* VelIdxPtr = &VelIndex;
-	int32* DenIdxPtr = &DenIndex;
-	int32* PresIdxPtr = &PresIndex;
+	int32 PresItr = PressureIterations; 
 
     float SimTime = AccumulatedTime + DeltaTime;
     float CurlTiling = CurlSimulationTiling;
@@ -204,19 +195,31 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
         CurlSimulationTexRHI = CurlNoiseTexture->GetResource()->TextureRHI;
     }
 
+	FFluidFogRenderState Snapshot  =  BuildFogRenderStateSnapShot();
+	auto Ext = FogExtension;
+	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
-	[ this, Resources, RTResource, DT,
-		FP, FD, FR, FS, DA, Diss, 
+	[ Resources, RTResource, Ext, Snapshot, 
+		DT, FP, FD, FR, FS, DA, Diss, 
         CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
-        Vortiy, Visc, PresItr, CurVelIdx, CurDenIdx, CurPresIdx,
-		VelIdxPtr, DenIdxPtr, PresIdxPtr](FRHICommandListImmediate& RHICmdList)
+        Vortiy, Visc, PresItr](FRHICommandListImmediate& RHICmdList) mutable 
 	{
 		if (!Resources->bInitialize)
 		{
+			if (Ext.IsValid())
+			{
+				FFluidFogRenderState DisabledState = Snapshot;
+				DisabledState.bEnable = false;
+				Ext->ApplyRenderState_RenderThread(DisabledState);
+			}
 			return;
 		}
 
-		int32 OutVelIdx = CurVelIdx, OutDenIdx = CurDenIdx, OutPrsIdx = CurPresIdx;
+		int32 InVelIdx = Resources->VelocityIndex;
+		int32 InDenIdx = Resources->DensityIndex;
+		int32 InPressIdx = Resources->PressureIndex;
+		
+		int32 OutVelIdx = InVelIdx, OutDenIdx = InDenIdx, OutPrsIdx = InPressIdx;
          
         /*        
 		FTextureRHIRef& InCurlNoiseTexture,
@@ -226,93 +229,28 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		float InCurlVelocityStrength,
         */
 
-		ExecuteSimulation(RHICmdList, Resources, RTResource,
-			DT,CurVelIdx, CurDenIdx, CurPresIdx,
+		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources, RTResource,
+			DT,InVelIdx, InDenIdx, InPressIdx,
 					   FP, FD, FR, FS, DA, Diss, 
                        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
                        Vortiy, Visc, PresItr,
 					   OutVelIdx, OutDenIdx, OutPrsIdx); 
-
-		*VelIdxPtr = OutVelIdx;
-		*DenIdxPtr = OutDenIdx;
-		*PresIdxPtr = OutPrsIdx;
+	
+		Resources->VelocityIndex = OutVelIdx;
+		Resources->DensityIndex = OutDenIdx;
+		Resources->PressureIndex = OutPrsIdx; 
+		
+		Snapshot.DensityTexture = Resources->Density[OutDenIdx];
+		
+		if (Ext.IsValid())
+		{
+			Ext->ApplyRenderState_RenderThread(Snapshot);
+		}
 	}
 	);
 	
 	AccumulatedTime += DeltaTime;
-
-	if (FogExtension)
-	{
-		FogExtension->bEnable              = bEnableFog;
-		
-		// Height Attenuation Mode
-		const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
-		const bool bModeChanged = bWasUsingCurveAttenuation != bUseCurveAttenuation;
-		const bool bCurveAssetChanged = LastHeightCurveAsset.Get() != HeightAttenuationCurve;
-		const bool bCurveResolutionChanged = LastHeightCurveLUTResolution != HeightCurveLUTResolution;
-		
-		FogExtension->HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
-		if (bUseCurveAttenuation)
-		{
-			// 세팅 변한게 있을 때만 reload to GPU
-			if (bModeChanged || bCurveAssetChanged || bCurveResolutionChanged)
-			{ 
-				// 재할당
-				LastHeightCurveAsset = HeightAttenuationCurve;
-				LastHeightCurveLUTResolution = HeightCurveLUTResolution;
-        		
-				PushHeightCurveSamplesToFogExtension();
-				bHeightCurveDirty = false;	
-			}
-		}
-		else if (bModeChanged && bWasUsingCurveAttenuation)
-		{
-			ReleaseHeightCurveFromFogExtension();
-		}
-		bWasUsingCurveAttenuation = bUseCurveAttenuation; 
-		
-		
-        //Legacy
-		FogExtension->HeightFalloff        = HeightFalloff;
-
-        //Adative Attenuation
-		FogExtension->HeightFadeStartRatio = HeightFadeStartRatio;
-		FogExtension->HeightFadeStrength = HeightFadeStrength;
-
-		FogExtension->FogDensityMultiplier = FogDensityMultiplier;
-		FogExtension->Absorption           = Absorption;
-		FogExtension->FogColor             = FVector3f(FogColor.R, FogColor.G, FogColor.B);
-		FogExtension->NumSteps             = NumSteps;
-		FogExtension->MaxRayDistance       = MaxRayDistance; 
-
-        FVector BoundsOrigin, BoundsExtents;
-        if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
-        {
-            FogExtension->SimulationCenter = FVector3f(BoundsOrigin);
-            FogExtension->SimulationExtents = FVector3f(BoundsExtents);
-
-            FogExtension->FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
-            FogExtension->FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
-        }
-         
-		FogExtension->FogDebugMode = static_cast<int32>(FogDebugMode);
-
-		// 렌더스레드에 Density/Velocity 텍스처 전달
-		auto Ext = FogExtension;
-		auto Res = FluidResources;
-		int32 CurDen = DenIndex; 
-
-		ENQUEUE_RENDER_COMMAND(FUpdateFogTextures)(
-			[Ext, Res, CurDen](FRHICommandListImmediate&
-	RHICmdList)
-			{
-				if (Res->bInitialize)
-				{
-					Ext->SetDensityRHI(Res->Density[CurDen]); 
-				}
-			}
-		);
-	}
+ 
 }
  
 bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const
@@ -335,6 +273,34 @@ bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVec
 
     Owner->GetActorBounds(false, OutOrigin, OutExtent);
     return true;
+}
+
+FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() const
+{
+	FFluidFogRenderState State;
+	State.bEnable = bEnableFog;
+	State.HeightAttenuationMode = static_cast<int32>(HeightAttenuationMode);
+	State.HeightFalloff = HeightFalloff;
+	State.HeightFadeStartRatio = HeightFadeStartRatio;
+	State.HeightFadeStrength = HeightFadeStrength;
+	State.FogDensityMultiplier = FogDensityMultiplier;
+	State.Absorption = Absorption;
+	State.FogColor = FVector3f(FogColor.R, FogColor.G, FogColor.B);
+	State.NumSteps = NumSteps;
+	State.MaxRayDistance = MaxRayDistance;
+	State.FogDebugMode = static_cast<int32>(FogDebugMode);
+	FVector BoundsOrigin, BoundsExtents;
+	
+	if (ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
+	{
+		State.SimulationCenter = FVector3f(BoundsOrigin);
+		State.SimulationExtents = FVector3f(BoundsExtents);
+		State.FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
+		State.FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
+	}
+	
+	// Density Texture의 인덱스를 여기서는 알 수 없으니 따로 채워줘야 함
+	return State;
 }
 
 TArray<float> UFluidSimulationComponent::BuildHeightCurveSamples() const
@@ -745,10 +711,25 @@ void UFluidSimulationComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 	Super::EndPlay(EndPlayReason);
 	FluidResources.Reset();
 	
-	if (FogExtension)
+	if (FogExtension.IsValid())
 	{
+		TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> LocalFogExtension= FogExtension; 
+		
 		ReleaseHeightCurveFromFogExtension();
-		FogExtension->bEnable = false;
+		
+		ENQUEUE_RENDER_COMMAND(FDisableFogExtension)
+		(
+			[LocalFogExtension](FRHICommandListImmediate& RHICmdList)
+			{
+				if (LocalFogExtension.IsValid())
+				{
+					FFluidFogRenderState DisabledState;
+					DisabledState.bEnable = false;
+					LocalFogExtension->ApplyRenderState_RenderThread((DisabledState));
+				}
+				
+			}	
+		);
 		FogExtension.Reset();
 	}
 	

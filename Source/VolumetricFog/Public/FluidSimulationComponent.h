@@ -36,6 +36,10 @@ struct FFluidResources
 	int32 Resolution = 0;
 	bool bInitialize = false;
 
+	int32 VelocityIndex = 0;
+	int32 DensityIndex = 0;
+	int32 PressureIndex = 0; 
+	
 	void Init(int32 Res, FRHICommandListImmediate& RHICmdList);
 };
 
@@ -174,6 +178,7 @@ public:
 private:
 	/** Helper Function */
 	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;
+	FFluidFogRenderState BuildFogRenderStateSnapShot() const;
 	
 	/** Curve Data를 Array<float> 데이터로 변환 */
 	TArray<float> BuildHeightCurveSamples() const;
@@ -192,13 +197,8 @@ private:
 	
 	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> FogExtension;
 	float AccumulatedTime = 0.f;
-	
-	// ping-pong Index
-	int32 VelIndex = 0;
-	int32 DenIndex = 0;
-	int32 PresIndex = 0;
 
-	void ExecuteSimulation(
+	static void ExecuteSimulation(
 		FRHICommandListImmediate& RHICmdList,
 		TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources,
 		FTextureRenderTargetResource* RTResource,
