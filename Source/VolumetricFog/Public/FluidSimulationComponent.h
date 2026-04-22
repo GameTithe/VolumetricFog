@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
 #include "FogSceneViewExtension.h"
 #include "FluidSimulationComponent.generated.h"
@@ -77,9 +76,6 @@ public:
 	EFluidFogDebugMode FogDebugMode = EFluidFogDebugMode::Sim_3D;
 	
 	// ======== Editer Setting ========
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fluid")
-	UTextureRenderTarget2D* OutputRT;
-	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "16", ClampMax = "2048"))
 	int32 SimResolution = 256;
 
@@ -176,7 +172,9 @@ public:
 	float HeightFadeStrength = 1.0f;
 	
 private:
-	/** Helper Function */
+	/**=================== Helper Function ===================*/
+	
+	/** Fog에 대한 인자들을 FFluidFogRenderState 로 묶기 */
 	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;
 	FFluidFogRenderState BuildFogRenderStateSnapShot() const;
 	
@@ -201,7 +199,6 @@ private:
 	static void ExecuteSimulation(
 		FRHICommandListImmediate& RHICmdList,
 		TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources,
-		FTextureRenderTargetResource* RTResource,
 		float DeltaTime,
 	 	int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
 	 	// 시뮬레이션 파라미터들

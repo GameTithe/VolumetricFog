@@ -158,8 +158,7 @@ void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRender
 
 void FFogSceneViewExtension::UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList,
                                                                TConstArrayView<float> Samples)
-{
-	
+{ 
 	// RenderThread가 아니면 assert 
 	check(IsInRenderingThread());
 	

@@ -131,7 +131,7 @@ public:
 	
 	/** Render Thread Helper Function */
 	
-	/** density texture가 바뀌었으면, RDG 등록용 PooledRT 갱신 */
+	/** density texture가 바뀌었으면, RDG 등록용 및 PooledRT 갱신 */
 	void ApplyRenderState_RenderThread(const FFluidFogRenderState& InState);
 	
 	void UpdateHeightCurveLUT_RenderThread(FRHICommandListImmediate& RHICmdList, TConstArrayView<float> Samples);

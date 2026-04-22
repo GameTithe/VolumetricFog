@@ -91,7 +91,8 @@ void UFluidSimulationComponent::BeginPlay()
 	FluidResources = MakeShared<FFluidResources, ESPMode::ThreadSafe>();
 	int32 Res = SimResolution;
 	auto Resources = FluidResources;
-
+	
+	// Render thread에서 resources 초기화
 	ENQUEUE_RENDER_COMMAND(FInitFluidResource)
 	(
 		[Resources, Res](FRHICommandListImmediate& RHICmdList)
@@ -99,14 +100,6 @@ void UFluidSimulationComponent::BeginPlay()
 			Resources->Init(Res, RHICmdList);
 		}
 	);
-	
-	if (OutputRT)
-	{
-		OutputRT->RenderTargetFormat = RTF_R32f;
-		OutputRT->bCanCreateUAV = true;
-		OutputRT->InitCustomFormat(SimResolution, SimResolution, PF_R32_FLOAT, true);
-		OutputRT->UpdateResourceImmediate(true);
-	}
 	
 	// Curve Data 
 	const bool bUseCurveAttenuation = HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation;
@@ -117,7 +110,7 @@ void UFluidSimulationComponent::BeginPlay()
 	bHeightCurveDirty = bUseCurveAttenuation;
 	
 		
-	// Fog Data Snapshot
+	// Fog Data Snapshot을 Render Thread에 전달 
 	FogExtension = FSceneViewExtensions::NewExtension<FFogSceneViewExtension>();
 	
 	if (FogExtension.IsValid())
@@ -133,8 +126,7 @@ void UFluidSimulationComponent::BeginPlay()
 				Ext->ApplyRenderState_RenderThread(InitialState);
 			}
 		});
-	}
-	
+	} 
 	
 	if (bUseCurveAttenuation)
 	{
@@ -150,25 +142,10 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    //if (!FluidResources || !OutputRT)
-    //{
-    //	return;
-    //}
 	if (!FluidResources )
 	{
 		return;
 	}
-
-    FTextureRenderTargetResource* RTResource = nullptr;
-    if (OutputRT)
-    {
-        RTResource = OutputRT->GameThread_GetRenderTargetResource();
-    }
-    
-	//if (!RTResource)
-	//{
-	//	return;
-	//}
 	
 	// 게임스레드에서 값 캡처
 	auto Resources = FluidResources;
@@ -199,7 +176,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	auto Ext = FogExtension;
 	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
-	[ Resources, RTResource, Ext, Snapshot, 
+	[ Resources, Ext, Snapshot, 
 		DT, FP, FD, FR, FS, DA, Diss, 
         CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
         Vortiy, Visc, PresItr](FRHICommandListImmediate& RHICmdList) mutable 
@@ -229,7 +206,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		float InCurlVelocityStrength,
         */
 
-		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources, RTResource,
+		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
 					   FP, FD, FR, FS, DA, Diss, 
                        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
@@ -243,7 +220,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		Snapshot.DensityTexture = Resources->Density[OutDenIdx];
 		
 		if (Ext.IsValid())
-		{
+		{	
 			Ext->ApplyRenderState_RenderThread(Snapshot);
 		}
 	}
@@ -274,6 +251,7 @@ bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVec
     Owner->GetActorBounds(false, OutOrigin, OutExtent);
     return true;
 }
+
 
 FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() const
 {
@@ -353,7 +331,7 @@ void UFluidSimulationComponent::PushHeightCurveSamplesToFogExtension()
 			{
 					if (LocalFogExtension.IsValid())
 					{
-							LocalFogExtension->UpdateHeightCurveLUT_RenderThread(RHICmdList, MakeArrayView(Samples));
+						LocalFogExtension->UpdateHeightCurveLUT_RenderThread(RHICmdList, MakeArrayView(Samples));
 					}
 			});
 }
@@ -379,10 +357,10 @@ void UFluidSimulationComponent::ReleaseHeightCurveFromFogExtension()
 
 
 void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
-                                                  TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources, FTextureRenderTargetResource* RTResource,
-                                                  float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
-                                                  FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
-                                                  FTextureRHIRef InCurlNoiseTexture, float InSimulationTime, float InCurlSimulationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength, float InCurlDensityMaskScale,
+												  TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources,
+												  float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
+												  FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
+												  FTextureRHIRef InCurlNoiseTexture, float InSimulationTime, float InCurlSimulationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength, float InCurlDensityMaskScale,
                                                   float InVorticityStrength, float InVisc, int32 InPressureIterations, int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
  {
  	 check(IsInRenderingThread());
@@ -683,26 +661,9 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	 }
  	
   
- 	 // Step 9: Density -> OutputRT 복사
-     if (RTResource)
- 	 {
-         RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectDensity");
- 	 	FTextureRHIRef OutputRHI = RTResource->GetRenderTargetTexture();
- 	 	if (OutputRHI)
- 	 	{
- 	 		RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Density[CurDenIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
- 	 		RHICmdList.Transition(FRHITransitionInfo(OutputRHI, ERHIAccess::Unknown, ERHIAccess::CopyDest));
-  
- 	 		FRHICopyTextureInfo CopyInfo;
- 	 		RHICmdList.CopyTexture(InFluidResources->Density[CurDenIdx], OutputRHI, CopyInfo);
-  
-            RHICmdList.Transition(FRHITransitionInfo(OutputRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask));
- 	 	}
- 	 }
-  
- 	 OutVelIndex = CurVelIdx;
- 	 OutDenIndex = CurDenIdx;
- 	 OutPresIndex = CurPresIdx;
+	 OutVelIndex = CurVelIdx;
+	 OutDenIndex = CurDenIdx;
+	 OutPresIndex = CurPresIdx;
  
  }
   

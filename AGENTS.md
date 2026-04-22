@@ -22,7 +22,7 @@
 - `FFogSceneViewExtension` injects the fullscreen fog pass through the renderer's post-opaque delegate. The main fog shader is `Shaders/Private/Rendering/FogRayMarch.usf`.
 
 ## Gotchas
-- `OutputRT` is optional debug output only. The fog render path still works without it; the RT is only used for copying the density field.
+- The fog render path consumes the simulation density texture directly through `FFogSceneViewExtension`; `UFluidSimulationComponent` no longer mirrors density into a debug `OutputRT`.
 - Bounds come from `AVolumetricFluidFog::BoundsComponent` when the component is attached to that actor; otherwise the code falls back to `GetActorBounds()`. The `SimulationWorldSize` property is currently not used by the active path.
 - `CurlNoiseTexture` must be assigned or imported explicitly. The loose PNGs under `CurlNoises/` are sample assets, not auto-loaded plugin content.
 - Ignore `Intermediate/` and `Binaries/` when reading the repo. They are generated outputs and can pollute searches with stale UBT/UHT code.
