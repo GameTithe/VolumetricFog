@@ -15,7 +15,6 @@ FFogSceneViewExtension::FFogSceneViewExtension(const FAutoRegister& AutoRegister
 	IRendererModule& RendererModule = FModuleManager::GetModuleChecked<IRendererModule>("Renderer");
 	
 	PostOpaqueDelegateHandle = RendererModule.RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FFogSceneViewExtension::RenderFog_RenderThread));
-	
 }
 
 FFogSceneViewExtension::~FFogSceneViewExtension()
@@ -40,12 +39,14 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	FRDGTextureRef SceneColor = InParameters.ColorTexture;
 	FRDGTextureRef SceneDepth = InParameters.DepthTexture;
 
+	// 현재까지 그려진(PostOpaque) SceneColor, SceneDepth 를 가져온다.
 	const FScreenPassTexture SceneColorInput(SceneColor, InParameters.ViewportRect);
 	const FScreenPassTexture SceneDepthInput(SceneDepth, InParameters.ViewportRect);
 
 	FRDGBuilder& GraphBuilder = *InParameters.GraphBuilder;
 	const FViewInfo& View = *InParameters.View;
 
+	// Read Write를 동시에 할 수 없으니, SceneColor 복사
 	FScreenPassRenderTarget FogOutput =
 		FScreenPassRenderTarget::CreateFromInput(
 			GraphBuilder,
@@ -55,10 +56,11 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 		); 
 	 
 	// 캐싱된 PooledRT를 RDG에 등록
+	// DensityTexture를 RGD pass에서 샘플하려면 RDG에 external texture로 등록을 해야 된다. 
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
-
-	//const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Create(GraphBuilder);
+	
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
+	
 	/** HeightCurve가 전송되기 전이면 Fallback texture 사용 */
 	FRDGTextureRef HeightCurveRDG;
 	if (HeightCurvePooledRT)
@@ -68,8 +70,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	else
 	{
 		HeightCurveRDG = SystemTextures.White;
-	}
-	 
+	} 
 	
 	// Shader Params 
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();
@@ -111,8 +112,17 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	
 	Params->FogDebugMode = State.FogDebugMode;
 	
-	// Scene Color에 직접 합성 
-	//Params->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);
+	// Self Shadow   
+	Params->SelfShadowLightDirection = State.SelfShadowLightDirection;
+	Params->SelfShadowLightColor = State.SelfShadowLightColor;
+	Params->SelfShadowLightIntensity = State.SelfShadowLightIntensity;
+	Params->SelfShadowDensityScale = State.SelfShadowDensityScale;
+	Params->SelfShadowStepCount = State.SelfShadowStepCount;
+	Params->SelfShadowMaxDistance = State.SelfShadowMaxDistance;
+	
+	
+	// Read: Scene Color
+	// Write: FogOutput
 	Params->RenderTargets[0] = FogOutput.GetRenderTargetBinding();
 	
 	TShaderMapRef<FFogRayMarchingPS> PS(GetGlobalShaderMap(View.GetFeatureLevel()));
@@ -125,9 +135,12 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 		FogOutput.ViewRect);
 
 	FRHICopyTextureInfo CopyInfo;
+	
 	CopyInfo.SourcePosition = FIntVector(InParameters.ViewportRect.Min.X,
 		InParameters.ViewportRect.Min.Y, 0);
+	
 	CopyInfo.DestPosition = CopyInfo.SourcePosition;
+	
 	CopyInfo.Size = FIntVector(InParameters.ViewportRect.Width(),
 		InParameters.ViewportRect.Height(), 1);
 	

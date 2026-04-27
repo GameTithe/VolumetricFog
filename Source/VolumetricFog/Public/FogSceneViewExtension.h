@@ -58,7 +58,15 @@ public:
 		
 		//Debug Parameter 
 		SHADER_PARAMETER(int32, FogDebugMode)
-	
+		
+		//Self Shadow  
+		SHADER_PARAMETER(FVector3f, SelfShadowLightDirection)
+		SHADER_PARAMETER(FVector3f, SelfShadowLightColor)
+		SHADER_PARAMETER(float, SelfShadowLightIntensity)
+		SHADER_PARAMETER(float, SelfShadowDensityScale)
+		SHADER_PARAMETER(int32, SelfShadowStepCount)
+		SHADER_PARAMETER(float, SelfShadowMaxDistance)
+			
         RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 	
@@ -114,6 +122,16 @@ struct FFluidFogRenderState
 
 	// Debug Parameter 
 	int32 FogDebugMode = 1; 
+	
+	// Self Shadow 
+	FVector3f SelfShadowLightDirection = FVector3f(0.4f, 0.2f, 1.0f);
+	FVector3f SelfShadowLightColor = FVector3f(1.0f, 1.0f, 1.0f);
+	 
+	float SelfShadowLightIntensity = 1.0f;
+  	float SelfShadowDensityScale;
+	 	int32 SelfShadowStepCount = 6;
+	float SelfShadowMaxDistance = 2000.0f;
+
 	
 	FTextureRHIRef DensityTexture;
 };

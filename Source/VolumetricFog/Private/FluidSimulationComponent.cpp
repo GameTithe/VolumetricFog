@@ -141,13 +141,15 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	if (!FluidResources )
+	
+	// Resources가 초기화되지 않았으면 Early Return
+	if (!FluidResources)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("TickComponent: Fluid Resources is Null"));
 		return;
 	}
 	
-	// 게임스레드에서 값 캡처
+	// 게임스레드에서 설정해둔 Fog관련 값들 캡처
 	auto Resources = FluidResources;
 	float DT = DeltaTime;
 	FVector2f FP = FVector2f(ForcePosition);
@@ -198,14 +200,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		
 		int32 OutVelIdx = InVelIdx, OutDenIdx = InDenIdx, OutPrsIdx = InPressIdx;
          
-        /*        
-		FTextureRHIRef& InCurlNoiseTexture,
-		float InSimulationTime,
-		float InCurlTiling,
-		float InCurlSimulationSpeed,
-		float InCurlVelocityStrength,
-        */
-
+		// 시뮬레이션
 		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
 					   FP, FD, FR, FS, DA, Diss, 
@@ -217,6 +212,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		Resources->DensityIndex = OutDenIdx;
 		Resources->PressureIndex = OutPrsIdx; 
 		
+		// 시뮬레이션 결과를 바탕으로 렌더링 (ping-pong buffer)
 		Snapshot.DensityTexture = Resources->Density[OutDenIdx];
 		
 		if (Ext.IsValid())
@@ -278,6 +274,16 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	}
 	
 	// Density Texture의 인덱스를 여기서는 알 수 없으니 따로 채워줘야 함
+	
+	
+	//Self Shadow  
+	const FVector SafeToLight = SelfShadowLightDirection.GetSafeNormal();
+	State.SelfShadowLightDirection = FVector3f(SafeToLight);
+	State.SelfShadowLightColor = FVector3f(SelfShadowLightColor.R, SelfShadowLightColor.G, SelfShadowLightColor.B);
+	State.SelfShadowLightIntensity = SelfShadowLightIntensity;
+	State.SelfShadowDensityScale = SelfShadowDensityScale;
+	State.SelfShadowStepCount = SelfShadowStepCount;
+	State.SelfShadowMaxDistance = SelfShadowMaxDistance; 
 	return State;
 }
 
@@ -302,10 +308,9 @@ TArray<float> UFluidSimulationComponent::BuildHeightCurveSamples() const
 		}
 	}
 	
-	
 	// CurveData의 시간에 맞게 값 보정 
 	for (int32 X = 0; X < LUTWidth; ++X)
-	{
+	{ 
 		const float U = LUTWidth > 1 ? static_cast<float>(X) / static_cast<float>(LUTWidth - 1)  : 0.0f;
 		const float CurveTime = FMath::Lerp(MinTime, MaxTime, U);
 		

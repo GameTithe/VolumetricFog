@@ -47,7 +47,7 @@ enum class EFluidFogDebugMode: uint8
 {
 	Sim_2D UMETA(DisplayName = "2D Simulation"),
 	Sim_3D UMETA(DisplayName = "3D Simulation"),
-	
+	DebugSelfShadow UMETA(DisplayName = "Debug Self Shadow")
 };
 
 UENUM(BlueprintType)
@@ -170,6 +170,26 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
 	float HeightFadeStrength = 1.0f;
+	
+	// Shadow 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
+	FVector SelfShadowLightDirection = FVector(0.4f, 0.2f, 1.0f);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
+	FLinearColor SelfShadowLightColor = FLinearColor::White;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
+	float SelfShadowLightIntensity = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0"))
+	float SelfShadowDensityScale = 1.2f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 SelfShadowStepCount = 6;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0", ClampMax = "2000.0"))
+	float SelfShadowMaxDistance = 2000.0f;
+
 	
 private:
 	/**=================== Helper Function ===================*/

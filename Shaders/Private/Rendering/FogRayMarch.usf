@@ -54,7 +54,17 @@ int FogDebugMode;
 
 static const int HEIGHT_MODE_LEGACY = 0;
 static const int HEIGHT_MODE_ADAPTIVE = 1;
-static const int HEIGHT_MODE_CURVELUT = 2;
+static const int HEIGHT_MODE_CURVELUT = 2; 
+
+
+// self - shadowing param 
+float3 SelfShadowLightDirection;
+float3 SelfShadowLightColor;
+float SelfShadowLightIntensity;
+float SelfShadowDensityScale;
+int SelfShadowStepCount;
+float SelfShadowMaxDistance;
+
 
 
 // 스크린 UV -> 월드 방향 벡터 생성
@@ -174,6 +184,7 @@ float InterleavedGradientNoise(float2 screenPos)
     return frac(magic.z * frac(dot(screenPos, magic.xy)));
 }
 
+// slab method
 bool RayBoxIntersect(float3 RayOrigin, float3 RayDir, float3 BoxMin, float3 BoxMax, out float tEntry, out float tExit)
 {
     float3 SafeDir = RayDir;
@@ -318,11 +329,62 @@ float SampleDensity(float3 WorldPos)
 	{
 	    return SampleDensity3D(WorldPos);
 	}
-       
+    
     return SampleDensity3D(WorldPos);
 
 } 
 
+float ComputeLightTransmittance(float3 P)
+{
+    float3 ToLight =  SelfShadowLightDirection;
+    float3 BoxMin = SimulationCenter - SimulationExtents;
+    float3 BoxMax = SimulationCenter + SimulationExtents;
+    
+    //float3 Start = P + ToLight * SELF_SHADOW_BIAS;
+    float3 Start = P + ToLight;
+    
+    float tEntry, tExit;
+    if (!RayBoxIntersect(Start, ToLight, BoxMin, BoxMax, tEntry, tExit))
+    {
+        return 1.0;
+    }
+    
+    float tStart = max(tEntry, 0.0f);
+    float tEnd = min(tExit, SelfShadowMaxDistance);
+    
+    if (tEnd <= tStart)
+    {
+        return 1.0f;
+    }
+    
+    int Steps = max(SelfShadowStepCount, 1);
+    float RayLen = tEnd - tStart;
+    
+    // linear한 step인데, 최적화 가능할 듯
+    float StepSize = RayLen / Steps;
+    float T = tStart + StepSize;
+    
+    float OpticalDepth = 0.0f;
+    [loop]
+    for (int i = 0; i < Steps; i++)
+    {
+        float3 S = Start + ToLight * T;
+        float Density = SampleDensity(S);
+        
+        if (Density > 1e-6f)
+        {
+            float SigmaT = Density * max(Absorption, 1e-4f) * SelfShadowDensityScale;
+            OpticalDepth += SigmaT * StepSize;
+            if (OpticalDepth > 8.0f)
+            {
+                return exp(-OpticalDepth);
+            }
+        }
+        
+        T += StepSize; 
+    }
+    return exp(-OpticalDepth);
+}
 
 void IntegrateRay(
     float3 RayOrigin,
@@ -331,7 +393,8 @@ void IntegrateRay(
     float tEnd,
     float2 PixelPos,
     out float OutTransmittance,
-    out float3 OutScattering
+    out float3 OutScattering,
+    out float OutDebugShadow
 )
 {
     float RayLen = max(tEnd - tStart, 0.0f);
@@ -360,7 +423,9 @@ void IntegrateRay(
     
     float Transmittance = 1.0f;
     float3 Scattering = 0.0f;
-
+  
+    // self-shadow Debyg용 
+    float MaxShadow = 0.0f;
     [loop]
     for (int i = 0; i < Steps; ++i)
     {
@@ -370,23 +435,43 @@ void IntegrateRay(
         }
         
         float3 P = RayOrigin + RayDir * T;
-        float Density = SampleDensity(P);
         
-        if (Density > 1e-6)
-        {
-            float SigmaT = Density * max(Absorption, 1e-4f);
-            float StepT = exp(-SigmaT * StepSize);
-            
-            float3 StepScatter = (1.0f - StepT) * FogColor;
-            
-            Scattering += Transmittance * StepScatter;
-            Transmittance *= StepT;
-            
-            if(Transmittance < 0.01f)
-            {
-                break; 
-            }
-        }
+        //float Density = SampleDensity(P);
+         // if (Density > 1e-6)
+         // {
+         //     float SigmaT = Density * max(Absorption, 1e-4f);
+         //     float StepT = exp(-SigmaT * StepSize);
+         //     
+         //     float3 StepScatter = (1.0f - StepT) * FogColor;
+         //     
+         //     Scattering += Transmittance * StepScatter;
+         //     Transmittance *= StepT;
+         //     
+         //     if(Transmittance < 0.01f)
+         //     {
+         //         break; 
+         //     }
+         // }
+         float Density = SampleDensity(P);
+         if (Density > 1e-6)
+         {
+             float SigmaT = Density * max(Absorption, 1e-4f);
+             float StepT = exp(-SigmaT * StepSize);
+             float LightT = ComputeLightTransmittance(P);
+             float3 IncidentLight = SelfShadowLightColor * SelfShadowLightIntensity;
+             float3 StepScatter = (1.0f - StepT) * FogColor * IncidentLight * LightT;
+             Scattering += Transmittance * StepScatter;
+             Transmittance *= StepT;
+             
+             // Debug 정보
+             float Shadow = 1.0f - LightT;
+             MaxShadow = max(MaxShadow, Shadow);
+             
+             if (Transmittance < 0.01f)
+             {
+                 break;
+             }
+         }
         
         T += StepSize;
     }
@@ -394,6 +479,7 @@ void IntegrateRay(
     OutTransmittance = saturate(Transmittance);
     OutScattering = max(Scattering, 0.0f);
 
+    OutDebugShadow = saturate(MaxShadow);
 }
 
 
@@ -475,9 +561,21 @@ void MainPS(
 
     float Transmittance;
     float3 Scaterring;
-    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scaterring);
+    float DebugShadow;
+    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scaterring, DebugShadow);
+    
+    if (FogDebugMode == 2)
+    {
+        // Shadow Debug 모드
+        float3 DebugTint = float3(1.0f, 0.0f, 0.0f);
+        OutColor = float4(lerp(SceneColor.rgb, DebugTint, DebugShadow), SceneColor.a); 
+        return;
+    }
     
     float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
-    OutColor = float4(FinalColor, SceneColor.a); 
+    OutColor = float4(FinalColor, SceneColor.a);    
+     
+
 }
+
 
