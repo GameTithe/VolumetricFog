@@ -336,6 +336,11 @@ float SampleDensity(float3 WorldPos)
 
 float ComputeLightTransmittance(float3 P)
 {
+    // 2D Simulation
+    if ( FogDebugMode == 0)
+    {
+        return 1.0f;
+    }
     float3 ToLight =  SelfShadowLightDirection;
     float3 BoxMin = SimulationCenter - SimulationExtents;
     float3 BoxMax = SimulationCenter + SimulationExtents;
@@ -572,7 +577,7 @@ void MainPS(
         return;
     }
     
-    float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
+            float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
     OutColor = float4(FinalColor, SceneColor.a);    
      
 
