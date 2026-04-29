@@ -7,6 +7,8 @@
 #include "FluidSimulationComponent.generated.h"
 
 class UCurveFloat;
+class ADirectionalLight;
+class ULightComponent;
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -108,6 +110,16 @@ public:
 	
 	
 	// Fog Rendering
+	// Directional Light
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight")
+	bool bUseWorldDirectionalLight = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight", meta = (EditCondition = "bUseWorldDirectionalLight"))
+	TObjectPtr<ADirectionalLight> DirectionalLightActor = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight", meta = (EditCondition = "bUseWorldDirectionalLight"))
+	bool bUseDirectionalLightColor = false;
+	
 	// ======== Fog Rendering ========
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	bool bEnableFog = true;
@@ -184,7 +196,7 @@ public:
 	float SelfShadowLightIntensity = 1.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0"))
-	float SelfShadowDensityScale = 1.2f;
+	float SelfShadowDensityScale = 1.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "1", ClampMax = "64"))
 	int32 SelfShadowStepCount = 6;
@@ -198,6 +210,10 @@ public:
 	
 private:
 	/**=================== Helper Function ===================*/
+	
+	/**Directional Light 관련 함수들*/
+	bool TryResolveDirectionalLight(class ADirectionalLight*& OutLightActor) const;
+	bool TryGetDirectionalLightSampleToLight(FVector& OutSampleToLight) const;
 	
 	/** Fog에 대한 인자들을 FFluidFogRenderState 로 묶기 */
 	bool ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const;

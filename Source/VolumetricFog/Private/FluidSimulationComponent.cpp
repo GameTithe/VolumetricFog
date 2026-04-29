@@ -10,6 +10,9 @@
 #include "Curves/CurveFloat.h"
 #include "RHIBreadcrumbs.h"
 #include "Stats/StatsHierarchical.h"
+#include "EngineUtils.h"
+#include "Components/LightComponent.h"
+#include "Engine/DirectionalLight.h"
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -225,7 +228,55 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	AccumulatedTime += DeltaTime;
  
 }
- 
+
+bool UFluidSimulationComponent::TryResolveDirectionalLight(class ADirectionalLight*& OutLightActor) const
+{
+	OutLightActor = nullptr;
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	if (DirectionalLightActor)
+	{
+		OutLightActor = DirectionalLightActor.Get(); 
+		return true;
+	}
+	
+	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+	{
+		OutLightActor = *It;
+		return true;
+	} 
+	return false;
+}
+
+bool UFluidSimulationComponent::TryGetDirectionalLightSampleToLight(FVector& OutSampleToLight) const
+{
+	OutSampleToLight = FVector::UpVector;
+	
+	ADirectionalLight* LightActor = nullptr;
+	if (!TryResolveDirectionalLight(LightActor)||!LightActor)
+	{
+		return false;
+	}
+	
+	const ULightComponent* LightComponent = LightActor->GetLightComponent();
+	if (!LightComponent)
+	{
+		return false;
+	}
+	
+	const FVector LightToScene = LightComponent->GetDirection().GetSafeNormal();
+	if (LightToScene.IsNearlyZero())
+	{
+		return false;
+	}
+	
+	OutSampleToLight = -LightToScene;
+	return true;
+}
+
 bool UFluidSimulationComponent::ResolveSimulationBounds(FVector& OutOrigin, FVector& OutExtent) const
 {
     const AActor* Owner = GetOwner();
@@ -276,12 +327,24 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	
 	// Density Texture의 인덱스를 여기서는 알 수 없으니 따로 채워줘야 함
 	
+	//Dir Of Directional Light 	
+	FVector FinalToLight = SelfShadowLightDirection.GetSafeNormal(); 
+	if (bUseWorldDirectionalLight)
+	{
+		FVector DirSampleToLight;
+		if (TryGetDirectionalLightSampleToLight(DirSampleToLight))
+		{
+			FinalToLight = DirSampleToLight;
+		}
+		
+		//TODO: 색 가져오기
+	}
+	const FVector SafeToLight = FinalToLight.GetSafeNormal();
+	State.SelfShadowLightDirection = FVector3f(SafeToLight);
 	
 	//Self Shadow  
-	const FVector SafeToLight = SelfShadowLightDirection.GetSafeNormal();
-	State.SelfShadowLightDirection = FVector3f(SafeToLight);
 	State.SelfShadowLightColor = FVector3f(SelfShadowLightColor.R, SelfShadowLightColor.G, SelfShadowLightColor.B);
-	State.SelfShadowLightIntensity = SelfShadowLightIntensity;
+	State.SelfShadowLightIntensity = SelfShadowLightIntensity; 
 	State.SelfShadowDensityScale = SelfShadowDensityScale;
 	State.SelfShadowStepCount = SelfShadowStepCount;
 	State.SelfShadowMaxDistance = SelfShadowMaxDistance; 

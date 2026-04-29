@@ -394,12 +394,14 @@ float ComputeLightTransmittance(float3 P)
             float SigmaA = Density * max(AbsorptionScale, 0.0f);
             float SigmaS = Density * max(ScatteringScale, 0.0f);
             float SigmaT = max(SigmaA + SigmaS, 1e-6f) * SelfShadowDensityScale;
+               
             float StepMeters = StepSize * 0.01f;
             OpticalDepth += SigmaT * StepMeters;
-            if (OpticalDepth > 8.0f)
+            float LightT = exp(-OpticalDepth);
+            if (LightT< 0.1f)
             {
-                return exp(-OpticalDepth);
-            }
+                return LightT;
+            } 
         }
         
         T += StepSize; 
@@ -484,7 +486,7 @@ void IntegrateRay(
              float LightT = ComputeLightTransmittance(P);
              
              //float3 StepScatter = (1.0f - StepT) * FogColor * LightT * IncidentLight ;//  * Phase;
-             float3 StepScatter = ScatteringRatio * (1.0f - StepT);// * FogColor;
+             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT * Phase;;
              Scattering += Transmittance * StepScatter;
              Transmittance *= StepT;
              

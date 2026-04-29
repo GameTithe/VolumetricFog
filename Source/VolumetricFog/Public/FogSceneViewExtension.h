@@ -137,7 +137,7 @@ struct FFluidFogRenderState
 	FVector3f SelfShadowLightColor = FVector3f(1.0f, 1.0f, 1.0f);
 	 
 	float SelfShadowLightIntensity = 1.0f;
-  	float SelfShadowDensityScale;
+	float SelfShadowDensityScale = 1.0f;
 	int32 SelfShadowStepCount = 6;
 	float SelfShadowMaxDistance = 2000.0f;
 	
