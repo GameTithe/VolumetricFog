@@ -39,8 +39,10 @@ float HeightFadeStrength;
 
 
 // Fog Parameters
-float FogDensityMultiplier;
-float Absorption;
+float FogDensityMultiplier; 
+float AbsorptionScale;
+float ScatteringScale;
+
 float3 FogColor;
 int NumSteps;
 float MaxRayDistance;
@@ -65,6 +67,8 @@ float SelfShadowDensityScale;
 int SelfShadowStepCount;
 float SelfShadowMaxDistance;
 
+//Phase function
+float GOfHG;
 
 
 // 스크린 UV -> 월드 방향 벡터 생성
@@ -99,28 +103,26 @@ float2 WorldToSimulationUV(float2 WorldXY)
     return UV;
 }
 
-  float2 GetOutputViewportUV(float4 SvPosition)
-  {
-      return (SvPosition.xy - OutputViewport_ViewportMin) * OutputViewport_ViewportSizeInverse;
-  }
+float2 GetOutputViewportUV(float4 SvPosition)
+{
+  return (SvPosition.xy - OutputViewport_ViewportMin) * OutputViewport_ViewportSizeInverse;
+}
 
-  float2 GetSceneColorUV(float2 ViewportUV)
-  {
-      float2 SamplePosition = ViewportUV * SceneColorViewport_ViewportSize +
-  SceneColorViewport_ViewportMin;
-      float2 UV = SamplePosition * SceneColorViewport_ExtentInverse;
-      return clamp(UV, SceneColorViewport_UVViewportBilinearMin,
-  SceneColorViewport_UVViewportBilinearMax);
-  }
+// Viewport: PIE 창 안의 게임화면   
+// SceneColor: Render Target(원본? 크기) 
+float2 GetSceneColorUV(float2 ViewportUV)
+{
+  float2 SamplePosition = ViewportUV * SceneColorViewport_ViewportSize + SceneColorViewport_ViewportMin;
+  float2 UV = SamplePosition * SceneColorViewport_ExtentInverse;
+  return clamp(UV, SceneColorViewport_UVViewportBilinearMin,SceneColorViewport_UVViewportBilinearMax);
+}
 
-  float2 GetSceneDepthUV(float2 ViewportUV)
-  {
-      float2 SamplePosition = ViewportUV * SceneDepthViewport_ViewportSize +
-  SceneDepthViewport_ViewportMin;
-      float2 UV = SamplePosition * SceneDepthViewport_ExtentInverse;
-      return clamp(UV, SceneDepthViewport_UVViewportBilinearMin,
-  SceneDepthViewport_UVViewportBilinearMax);
-  }
+float2 GetSceneDepthUV(float2 ViewportUV)
+{
+  float2 SamplePosition = ViewportUV * SceneDepthViewport_ViewportSize +  SceneDepthViewport_ViewportMin;
+  float2 UV = SamplePosition * SceneDepthViewport_ExtentInverse;
+  return clamp(UV, SceneDepthViewport_UVViewportBilinearMin, SceneDepthViewport_UVViewportBilinearMax);
+}
 
 //float3 ReconstructWorldPos(float2 UV, float DeviceDepth)
 //{
@@ -334,6 +336,17 @@ float SampleDensity(float3 WorldPos)
 
 } 
 
+float HenyeyGreensteinPhaseFunction(float CosTheta, float G)
+{
+    G = clamp(G, -0.95f, 0.95f);
+    
+    float GG = G * G;
+    float Denom = max(1.0f + GG - 2.0f  * G * CosTheta, 1e-4f);
+    
+    // 1/4pi까지 곱하는게 본래 식인다. 
+    return (1.0f - GG) / (Denom * sqrt(Denom));
+        
+}
 float ComputeLightTransmittance(float3 P)
 {
     // 2D Simulation
@@ -378,8 +391,11 @@ float ComputeLightTransmittance(float3 P)
         
         if (Density > 1e-6f)
         {
-            float SigmaT = Density * max(Absorption, 1e-4f) * SelfShadowDensityScale;
-            OpticalDepth += SigmaT * StepSize;
+            float SigmaA = Density * max(AbsorptionScale, 0.0f);
+            float SigmaS = Density * max(ScatteringScale, 0.0f);
+            float SigmaT = max(SigmaA + SigmaS, 1e-6f) * SelfShadowDensityScale;
+            float StepMeters = StepSize * 0.01f;
+            OpticalDepth += SigmaT * StepMeters;
             if (OpticalDepth > 8.0f)
             {
                 return exp(-OpticalDepth);
@@ -408,63 +424,67 @@ void IntegrateRay(
     {
         OutTransmittance = 1.0f;
         OutScattering = 0.0f;
+        OutDebugShadow = 0.0f;
         return;
     }
     
-    // 거리 기반 Step + 상한 Num Steps
+    // Unreal단위: cm 
+    // 현재 Volume의 100cm당 1 Sampling 등분을 하고,
+    // 24 ~ MaxSteps으로 Clamp해서 Step 수를 정한다.
+    // TODO: 지금은 Linear한 샘플링 방법이서 추후 변경 예정
+    
     const float DesiredStepCm = 100.0f;
-    int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm);
+    int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm); 
+    
     int MaxSteps = max(NumSteps, 1);
     int MinSteps = min(24, MaxSteps);
-    int Steps = clamp(AdaptiveSteps, MinSteps, MaxSteps);
-
     
+    int Steps = clamp(AdaptiveSteps, MinSteps, MaxSteps);
     float StepSize = RayLen / max((float) Steps, 1.0f);
     
     // 밴딩 완화 
     //float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
     //float T = tStart + Jitter;
+    
     float T = tStart;
     
-    float Transmittance = 1.0f;
-    float3 Scattering = 0.0f;
+    float Transmittance = 1.0f; // SceneColor를 얼마나 남길지 비율
+    float3 Scattering = 0.0f;   // 연기 색
   
     // self-shadow Debyg용 
-    float MaxShadow = 0.0f;
+    float MaxShadow = 0.0f; 
+    float3 IncidentLight = SelfShadowLightColor * SelfShadowLightIntensity;
+    
+    //Phase Function Params
+    float CosTheta = clamp(dot(SelfShadowLightDirection, -RayDir) , -1.0f, 1.0f);
+    float Phase = HenyeyGreensteinPhaseFunction(CosTheta, GOfHG); 
+        
     [loop]
     for (int i = 0; i < Steps; ++i)
-    {
+    {   
         if(T > tEnd )
         {
             break;
         }
         
-        float3 P = RayOrigin + RayDir * T;
+        float3 P = RayOrigin + RayDir * T; 
         
-        //float Density = SampleDensity(P);
-         // if (Density > 1e-6)
-         // {
-         //     float SigmaT = Density * max(Absorption, 1e-4f);
-         //     float StepT = exp(-SigmaT * StepSize);
-         //     
-         //     float3 StepScatter = (1.0f - StepT) * FogColor;
-         //     
-         //     Scattering += Transmittance * StepScatter;
-         //     Transmittance *= StepT;
-         //     
-         //     if(Transmittance < 0.01f)
-         //     {
-         //         break; 
-         //     }
-         // }
          float Density = SampleDensity(P);
          if (Density > 1e-6)
          {
-             float SigmaT = Density * max(Absorption, 1e-4f);
-             float StepT = exp(-SigmaT * StepSize);
+             float StepMeters = StepSize * 0.01f;
+             // bear lambert: out-scattering
+             float SigmaA = Density * max(AbsorptionScale, 0.0f);
+             float SigmaS = Density * max(ScatteringScale, 0.0f);
+             float SigmaT = max(SigmaA + SigmaS, 1e-6);
+             float StepT = exp(-SigmaT * StepMeters); 
+             
+             // in-scattering
+             float ScatteringRatio = SigmaS / SigmaT;
              float LightT = ComputeLightTransmittance(P);
-             float3 IncidentLight = SelfShadowLightColor * SelfShadowLightIntensity;
-             float3 StepScatter = (1.0f - StepT) * FogColor * IncidentLight * LightT;
+             
+             //float3 StepScatter = (1.0f - StepT) * FogColor * LightT * IncidentLight ;//  * Phase;
+             float3 StepScatter = ScatteringRatio * (1.0f - StepT);// * FogColor;
              Scattering += Transmittance * StepScatter;
              Transmittance *= StepT;
              
@@ -477,7 +497,6 @@ void IntegrateRay(
                  break;
              }
          }
-        
         T += StepSize;
     }
     
@@ -540,6 +559,7 @@ void MainPS(
     float2 SceneColorUV = GetSceneColorUV(ViewportUV);
     float2 SceneDepthUV = GetSceneDepthUV(ViewportUV);
     float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, SceneColorUV);
+    
     float3 RayOrigin = CameraPosition;
     float3 RayDir = ReconstructWorldDir(ViewportUV);
     float SceneDepth = GetLinearSceneDepth(SceneDepthUV, ViewportUV);
@@ -549,7 +569,7 @@ void MainPS(
     
     float tEntry, tExit;
     
-    if(!RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMax, tEntry, tExit) || tEntry > SceneDepth)
+    if(!RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMax, tEntry, tExit))
     {
         OutColor = SceneColor;
         return;
@@ -565,21 +585,22 @@ void MainPS(
     }
 
     float Transmittance;
-    float3 Scaterring;
+    float3 Scattering;
     float DebugShadow;
-    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scaterring, DebugShadow);
+    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scattering, DebugShadow);
     
+    // Shadow Debug 모드
     if (FogDebugMode == 2)
     {
-        // Shadow Debug 모드
         float3 DebugTint = float3(1.0f, 0.0f, 0.0f);
         OutColor = float4(lerp(SceneColor.rgb, DebugTint, DebugShadow), SceneColor.a); 
         return;
     }
     
-            float3 FinalColor = SceneColor.rgb * Transmittance + Scaterring;
-    OutColor = float4(FinalColor, SceneColor.a);    
-     
+   // float3 FinalColor = SceneColor.rgb * Transmittance + Scattering;
+    float3 FinalColor = SceneColor.rgb * Transmittance + FogColor * Scattering;
+
+    OutColor = float4(FinalColor, SceneColor.a);     
 
 }
 

@@ -257,8 +257,9 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	State.HeightFalloff = HeightFalloff;
 	State.HeightFadeStartRatio = HeightFadeStartRatio;
 	State.HeightFadeStrength = HeightFadeStrength;
-	State.FogDensityMultiplier = FogDensityMultiplier;
-	State.Absorption = Absorption;
+	State.FogDensityMultiplier = FogDensityMultiplier; 
+	State.AbsorptionScale = AbsorptionScale;
+	State.ScatteringScale = ScatteringScale;
 	State.FogColor = FVector3f(FogColor.R, FogColor.G, FogColor.B);
 	State.NumSteps = NumSteps;
 	State.MaxRayDistance = MaxRayDistance;
@@ -284,6 +285,9 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	State.SelfShadowDensityScale = SelfShadowDensityScale;
 	State.SelfShadowStepCount = SelfShadowStepCount;
 	State.SelfShadowMaxDistance = SelfShadowMaxDistance; 
+	
+	// Phase Function
+	State.GOfHG = GOfHG;
 	return State;
 }
 

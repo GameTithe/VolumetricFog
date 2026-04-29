@@ -120,10 +120,12 @@ public:
 	(ClampMin = "0.0"))
 	float FogDensityMultiplier = 2.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
-	(ClampMin = "0.0"))
-	float Absorption = 0.5f;
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AbsorptionScale = 0.1f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ScatteringScale = 0.5f;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	FLinearColor FogColor = FLinearColor(0.8f, 0.85f, 0.9f, 1.f);
 
@@ -190,6 +192,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0", ClampMax = "2000.0"))
 	float SelfShadowMaxDistance = 2000.0f;
 
+	// Phase Function
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Phase", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float GOfHG = 0.0f;
 	
 private:
 	/**=================== Helper Function ===================*/

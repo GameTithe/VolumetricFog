@@ -48,7 +48,10 @@ public:
 		SHADER_PARAMETER(float, HeightFadeStrength)
 
 		SHADER_PARAMETER(float, FogDensityMultiplier)
-        SHADER_PARAMETER(float, Absorption)
+        //SHADER_PARAMETER(float, Absorption)
+        SHADER_PARAMETER(float, AbsorptionScale)
+        SHADER_PARAMETER(float, ScatteringScale)
+	
         SHADER_PARAMETER(FVector3f, FogColor)
         SHADER_PARAMETER(int, NumSteps)
         SHADER_PARAMETER(float, MaxRayDistance)
@@ -66,6 +69,9 @@ public:
 		SHADER_PARAMETER(float, SelfShadowDensityScale)
 		SHADER_PARAMETER(int32, SelfShadowStepCount)
 		SHADER_PARAMETER(float, SelfShadowMaxDistance)
+	
+		//Phase Function
+		SHADER_PARAMETER(float, GOfHG)
 			
         RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -102,7 +108,10 @@ struct FFluidFogRenderState
 	float FogBaseHeight = 0.f;
 	float FogMaxHeight = 500.f;
 	float FogDensityMultiplier = 2.f;
-	float Absorption          = 0.5f;
+	//float Absorption          = 0.5f;
+	float AbsorptionScale = 0.1f;
+	float ScatteringScale = 0.5f;
+	
 	FVector3f FogColor        = FVector3f(0.8f, 0.85f, 0.9f);
 	int32 NumSteps            = 64;
 	float MaxRayDistance       = 5000.f;
@@ -129,9 +138,11 @@ struct FFluidFogRenderState
 	 
 	float SelfShadowLightIntensity = 1.0f;
   	float SelfShadowDensityScale;
-	 	int32 SelfShadowStepCount = 6;
+	int32 SelfShadowStepCount = 6;
 	float SelfShadowMaxDistance = 2000.0f;
-
+	
+	// Phase Function
+	float GOfHG = 0.0f;
 	
 	FTextureRHIRef DensityTexture;
 };

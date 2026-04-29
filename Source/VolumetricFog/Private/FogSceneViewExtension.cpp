@@ -100,8 +100,9 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->FogMaxHeight         = State.FogMaxHeight;
 	Params->HeightFalloff        = State.HeightFalloff;
 
-	Params->FogDensityMultiplier = State.FogDensityMultiplier;
-	Params->Absorption           = State.Absorption;
+	Params->FogDensityMultiplier = State.FogDensityMultiplier; 
+	Params->AbsorptionScale      = State.AbsorptionScale;
+	Params->ScatteringScale      = State.ScatteringScale;
 	Params->FogColor             = State.FogColor;
 	Params->NumSteps             = State.NumSteps;
 	Params->MaxRayDistance       = State.MaxRayDistance;
@@ -120,6 +121,8 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->SelfShadowStepCount = State.SelfShadowStepCount;
 	Params->SelfShadowMaxDistance = State.SelfShadowMaxDistance;
 	
+	// Phase Function
+	Params->GOfHG = State.GOfHG;
 	
 	// Read: Scene Color
 	// Write: FogOutput
