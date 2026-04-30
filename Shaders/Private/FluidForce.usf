@@ -19,15 +19,22 @@ float DensityAmount;
 float DeltaTime;
 float Dissipation;  //밀도 감쇠
 
-//Curl
+// Curl
 float CurlSimulationTiling;
-float CurlSimulationSpeed;
+float CurlSimulationSpeed;  
 float CurlVelocityStrength;
 float CurlDensityMaskScale;
+
+// Interaction
+#define MAX_FLUID_INTERACTION_FORCE_SOURCE 8
+uint InteractionForceSourceCount;
+float4 InteractionForcePositionRadius[MAX_FLUID_INTERACTION_FORCE_SOURCE];
+float4 InteractionForceVectorDensity[MAX_FLUID_INTERACTION_FORCE_SOURCE];
 
 
 float2 InvResolution;
 int2 Resolution;
+
 
 [numthreads(8,8,1)]
 void MainCS(uint3 DTid : SV_DispatchThreadID)
@@ -42,16 +49,44 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     float2 Vel = VelocityInput[DTid.xy];
     float Density = DensityInput[DTid.xy];
 
+    // old school
+    //float Dist = length(UV - ForcePosition);
+    //float Influence = exp(-(Dist * Dist) / (2.0 * ForceRadius * ForceRadius));
+    //
+    //// 이번 프레임에 Density를 계산( Density 가 존재하는 곳에만 turbulence(난류) 적용 예정
+    //float AddedDensity = DensityAmount * Influence * DeltaTime;
+    //float NewDensity = (Density + AddedDensity) * Dissipation;
+    //
+    //// 기존 외력
+    //Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
+ 
+    //new school
+    float AddedDensity = 0.0f;
+    float SafeForceRadius = max(ForceRadius, 1e-4f);
     float Dist = length(UV - ForcePosition);
-    float Influence = exp(-(Dist * Dist) / (2.0 * ForceRadius * ForceRadius));
-    
-    // 이번 프레임에 Density를 계산( Density 가 존재하는 곳에만 turbulence(난류) 적용 예정
-    float AddedDensity = DensityAmount * Influence * DeltaTime;
+    float Influence = exp(-(Dist * Dist) / (2.0f * SafeForceRadius * SafeForceRadius));
+    AddedDensity += DensityAmount * Influence * DeltaTime;
+    Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
+    uint SourceCount = min(InteractionForceSourceCount, (uint)MAX_FLUID_INTERACTION_FORCE_SOURCE);
+    for (uint SourceIndex = 0; SourceIndex < SourceCount; ++SourceIndex)
+    {
+        float4 PositionRadius = InteractionForcePositionRadius[SourceIndex];
+        float4 ForceDensity = InteractionForceVectorDensity[SourceIndex];
+        float2 SourceUV = PositionRadius.xy;
+        float2 SourceRadiusUV = max(PositionRadius.zw, float2(1e-4f, 1e-4f));
+        float2 SourceForce = ForceDensity.xy;
+        float SourceDensityAmount = ForceDensity.z;
+        float2 SourceOffset = (UV - SourceUV) / SourceRadiusUV;
+        float SourceInfluence = exp(-0.5f * dot(SourceOffset, SourceOffset));
+        AddedDensity += SourceDensityAmount * SourceInfluence * DeltaTime;
+        Vel += SourceForce * SourceInfluence * DeltaTime;
+    }
     float NewDensity = (Density + AddedDensity) * Dissipation;
     
-    // 기존 외력
-    Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
-
+    
+    
+    
+    
     // CurlNoise -> Velocity Force
     float2 NoiseUV = frac(UV * CurlSimulationTiling + float2(CurlSimulationSpeed * Time, CurlSimulationSpeed * Time));
      

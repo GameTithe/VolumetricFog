@@ -5,6 +5,11 @@
 #include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
 
+#ifndef MAX_FLUID_INTERACTION_FORCE_SOURCE
+#define MAX_FLUID_INTERACTION_FORCE_SOURCE 8
+#endif
+
+
 class FFluidAdvectVelocityCS : public FGlobalShader
 {
 public:
@@ -152,6 +157,11 @@ public:
 		SHADER_PARAMETER(float, CurlVelocityStrength)
 		SHADER_PARAMETER(float, CurlDensityMaskScale)
 		
+		// Interaction Params
+		SHADER_PARAMETER(uint32, InteractionForceSourceCount) 
+		SHADER_PARAMETER_ARRAY(FVector4f, InteractionForcePositionRadius, [MAX_FLUID_INTERACTION_FORCE_SOURCE])
+		SHADER_PARAMETER_ARRAY(FVector4f, InteractionForceVectorDensity, [MAX_FLUID_INTERACTION_FORCE_SOURCE])
+	
 		SHADER_PARAMETER(FVector2f, InvResolution)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 	END_SHADER_PARAMETER_STRUCT()

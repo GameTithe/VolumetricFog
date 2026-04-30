@@ -15,8 +15,15 @@ AVolumetricFluidFog::AVolumetricFluidFog()
 	SetRootComponent(BoundsComponent);
 
 	BoundsComponent->InitBoxExtent(FVector(3.0f, 3.0f, 3.0f));
-	BoundsComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	BoundsComponent->SetGenerateOverlapEvents(false);
+	BoundsComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	BoundsComponent->SetGenerateOverlapEvents(true);
+	BoundsComponent->SetCollisionObjectType(ECC_WorldDynamic);
+	BoundsComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	
+	BoundsComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	BoundsComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	BoundsComponent->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+	
 	BoundsComponent->SetCanEverAffectNavigation(false);
 	BoundsComponent->SetHiddenInGame(true);
 

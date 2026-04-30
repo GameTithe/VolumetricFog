@@ -6,6 +6,10 @@
 #include "FogSceneViewExtension.h"
 #include "FluidSimulationComponent.generated.h"
 
+#ifndef MAX_FLUID_INTERACTION_FORCE_SOURCE
+#define MAX_FLUID_INTERACTION_FORCE_SOURCE 8
+#endif
+
 class UCurveFloat;
 class ADirectionalLight;
 class ULightComponent;
@@ -60,6 +64,18 @@ enum class EFluidHeightAttenuationMode : uint8
 	CurveAttenuation UMETA(DisplayName = "Curve Attenuation"),
 };
 
+struct FFluidInteractionForceSource
+{
+	FVector4f PositionRadius = FVector4f(0.0f, 0.0f, 1.0f, 1.0f);
+	FVector4f ForceDensity = FVector4f(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
+struct FTrackedFluidInteractionActor
+{
+	TWeakObjectPtr<AActor> InteractionActor;
+	TWeakObjectPtr<UPrimitiveComponent> Comp;
+	FVector LastLocation = FVector::ZeroVector; 
+};
 
 UCLASS(ClassGroup=(VolumetricFog), meta=(BlueprintSpawnableComponent))
 class VOLUMETRICFOG_API UFluidSimulationComponent : public UActorComponent
@@ -107,6 +123,16 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.0"))
 	float Viscosity = 0.001f;
+	
+	// Interaction
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction")
+	bool bEnableActorInteraction = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction", meta = (ClampMin = "1.0"))
+	float ActorInteractionRadiusMultiplier = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction", meta = (ClampMin = "1.0"))
+	float ActorInteractionForceMultiplier = 5.0f;
 	
 	
 	// Fog Rendering
@@ -230,7 +256,23 @@ public:
 private:
 	/**=================== Helper Function ===================*/
 	
-	/**Directional Light 관련 함수들*/
+	/** Interaction function & Data */
+	UFUNCTION()
+	void HandleInteractionBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult & SweepResult);
+	
+	UFUNCTION()
+	void HandleInteractionEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+	
+	void AddInteractionActor(AActor* Actor, UPrimitiveComponent* Comp);
+	void RemoveInteractionActor(AActor* Actor, UPrimitiveComponent* Comp); 
+	bool WorldLocationToSimulationUV(const FVector& WorldLocation, const FVector& BoundsOrigin, const FVector& BoundsExtents, FVector2f& OutUV);
+	
+	TArray<FFluidInteractionForceSource> BuildInteractionForceSources(float DeltaTime);
+	
+	TWeakObjectPtr<UPrimitiveComponent> InteractionBoundsComponent;
+	TArray<FTrackedFluidInteractionActor>  ActiveInteractionActors;
+	
+	/**Directional Light 관련 함수들 */
 	bool TryResolveDirectionalLight(class ADirectionalLight*& OutLightActor) const;
 	bool TryGetDirectionalLightSampleToLight(FVector& OutSampleToLight) const;
 	
@@ -284,6 +326,8 @@ private:
 		float InBaseDensityRecoverySpeed,
 		float InBaseDensityDeadbandRatio,
 		float InBaseDensityNoiseRepeat,
+		// Interaction Force
+		const TArray<FFluidInteractionForceSource>& InInteractionForceSources,
 	 	// 반환용
 	 	int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex
 	 	);

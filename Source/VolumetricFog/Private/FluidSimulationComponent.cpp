@@ -1,4 +1,6 @@
 #include "FluidSimulationComponent.h"
+ 
+
 #include "FluidShaders.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
@@ -14,6 +16,7 @@
 #include "TextureResource.h"
 #include "Components/LightComponent.h"
 #include "Engine/DirectionalLight.h"
+#include "Components/PrimitiveComponent.h" 
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -138,6 +141,33 @@ void UFluidSimulationComponent::BeginPlay()
 		bHeightCurveDirty = false;
 	}
 	
+	// Interaction을 위한 overlap binding 
+	if (AVolumetricFluidFog* FogActor = Cast<AVolumetricFluidFog>(GetOwner()))
+	{
+		if (UBoxComponent* Box = FogActor->GetBoundsComponents())
+		{
+			InteractionBoundsComponent = Box;
+			Box->OnComponentBeginOverlap.AddDynamic(this, &UFluidSimulationComponent::HandleInteractionBeginOverlap);
+			Box->OnComponentEndOverlap.AddDynamic(this, &UFluidSimulationComponent::HandleInteractionEndOverlap);
+			
+			TArray<AActor*> OverlappingActors;
+			Box->GetOverlappingActors(OverlappingActors);
+			
+			for (AActor* Actor: OverlappingActors)
+			{
+				TArray<UPrimitiveComponent*> Comps;
+				Actor->GetComponents(Comps);
+				
+				for (UPrimitiveComponent* Comp : Comps)
+				{
+					if (Comp && Comp->IsOverlappingComponent(Box))
+					{
+						AddInteractionActor(Actor, Comp);
+					}
+				}
+			}
+		}
+	}
 }
 
 
@@ -192,11 +222,16 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	FFluidFogRenderState Snapshot  =  BuildFogRenderStateSnapShot();
 	auto Ext = FogExtension;
 	
+	
+	//Interaction Param
+	TArray<FFluidInteractionForceSource> InteractionForceSources = BuildInteractionForceSources(DeltaTime);
+	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
 	[ Resources, Ext, Snapshot, 
 		DT, FP, FD, FR, FS, DA, Diss, 
         CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
         bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
+        InteractionForceSources,
         Vortiy, Visc, PresItr](FRHICommandListImmediate& RHICmdList) mutable 
 	{
 		if (!Resources->bInitialize)
@@ -223,7 +258,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
                        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
                        Vortiy, Visc, PresItr,
                        bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
-					   OutVelIdx, OutDenIdx, OutPrsIdx); 
+                       InteractionForceSources,
+                       OutVelIdx, OutDenIdx, OutPrsIdx); 
 	
 		Resources->VelocityIndex = OutVelIdx;
 		Resources->DensityIndex = OutDenIdx;
@@ -241,6 +277,156 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	
 	AccumulatedTime += DeltaTime;
  
+}
+
+void UFluidSimulationComponent::HandleInteractionBeginOverlap(UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep,
+	const FHitResult& SweepResult)
+{
+	AddInteractionActor(OtherActor, OtherComp);
+}
+
+void UFluidSimulationComponent::HandleInteractionEndOverlap(UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	RemoveInteractionActor(OtherActor, OtherComp);
+}
+
+void UFluidSimulationComponent::AddInteractionActor(AActor* Actor, UPrimitiveComponent* Comp)
+{
+	if (!bEnableActorInteraction || !IsValid(Actor) || !IsValid(Comp) || Actor == GetOwner())
+	{
+		return;
+	}
+	
+	FTrackedFluidInteractionActor NewTracked;
+	NewTracked.InteractionActor = Actor;
+	NewTracked.Comp = Comp;
+	NewTracked.LastLocation = Comp->Bounds.Origin; 
+	
+	ActiveInteractionActors.Add(NewTracked);
+}
+
+void UFluidSimulationComponent::RemoveInteractionActor(AActor* Actor, UPrimitiveComponent* Comp)
+{
+	for (int32 Idx = ActiveInteractionActors.Num() - 1; Idx >= 0; --Idx)
+	{
+		FTrackedFluidInteractionActor & Tracked = ActiveInteractionActors[Idx]; 
+		
+		const bool bInvalid = !Tracked.InteractionActor.IsValid() || !Tracked.Comp.IsValid();
+		const bool bMatches = Tracked.InteractionActor.Get() == Actor && Tracked.Comp.Get() == Comp;
+	
+		if (bInvalid || bMatches)
+		{
+			ActiveInteractionActors.RemoveAtSwap(Idx);
+			return;
+		}
+	}
+}
+
+bool UFluidSimulationComponent::WorldLocationToSimulationUV(const FVector& WorldLocation, const FVector& BoundsOrigin,
+	const FVector& BoundsExtents, FVector2f& OutUV)
+{
+	const FVector SafeExtents(BoundsExtents.X,BoundsExtents.Y, BoundsExtents.Z );
+	FVector2f UV;
+	UV.X = static_cast<float>((WorldLocation.X - BoundsOrigin.X + SafeExtents.X) / (SafeExtents.X * 2.0));
+	UV.Y = static_cast<float>((WorldLocation.Y - BoundsOrigin.Y + SafeExtents.Y) / (SafeExtents.Y * 2.0));
+	UV.Y = 1.0f - UV.Y;
+	
+	if (UV.X < 0.0f || UV.X > 1.0f || UV.Y < 0.0f || UV.Y > 1.0f)
+	{
+		return false;
+	}
+	OutUV = UV;
+	return true; 
+}
+
+TArray<FFluidInteractionForceSource> UFluidSimulationComponent::BuildInteractionForceSources(float DeltaTime)
+{
+	TArray<FFluidInteractionForceSource> Sources;
+	
+	if (!bEnableActorInteraction)
+	{
+		return Sources;
+	}
+	
+	FVector BoundsOrigin;
+	FVector BoundsExtents;
+	if ( !ResolveSimulationBounds(BoundsOrigin, BoundsExtents))
+	{
+		return Sources;	
+	}
+	
+	const float Width = FMath::Max(BoundsExtents.X * 2.0f, 1);
+	const float Height = FMath::Max(BoundsExtents.Y * 2.0f, 1);
+	
+	for (int32 Idx = ActiveInteractionActors.Num() - 1; Idx >= 0; --Idx)
+	{
+		FTrackedFluidInteractionActor & Tracked = ActiveInteractionActors[Idx];
+		AActor* Actor = Tracked.InteractionActor.Get();
+		UPrimitiveComponent* Comp = Tracked.Comp.Get();
+		
+		if (!IsValid(Comp) || !IsValid(Actor))
+		{
+			RemoveInteractionActor(Actor, Comp);
+			continue;
+		}
+		
+		const FVector CurrentLocation = Comp->Bounds.Origin;	
+		
+		FVector2f PositionUV;
+		if (!WorldLocationToSimulationUV(CurrentLocation, BoundsOrigin, BoundsExtents, PositionUV))
+		{
+			continue;
+		}
+		
+		FVector Velocity = Actor->GetVelocity(); 
+		
+		
+		const FVector FallbackVelocity = (CurrentLocation - Tracked.LastLocation) / DeltaTime;
+		
+		if (FallbackVelocity.SizeSquared2D() > Velocity.SizeSquared2D())
+		{
+			Velocity = FallbackVelocity;
+		}
+		
+		Tracked.LastLocation = CurrentLocation;
+		
+		if (Velocity.SizeSquared2D() <= 1e-3)
+		{
+			continue;
+		}
+		
+		UE_LOG(LogTemp, Warning,TEXT("Velocity: %.2f %.2f"), Velocity.X, Velocity.Y);
+			
+		// 속도를 volume 내 density field에서의 비율로 치환 
+		const FVector2f SimVelocity(
+			static_cast<float>(Velocity.X) / Width * SimResolution,
+			static_cast<float>(-Velocity.Y) / Height * SimResolution
+		); 
+		
+		const FVector2f Force = SimVelocity * ActorInteractionForceMultiplier;
+		
+		// bounds를 감싸는 box, sphere를 저장
+		const FBoxSphereBounds ComponentBounds = Comp->Bounds;
+		
+		const float RadiusXWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.X) * ActorInteractionRadiusMultiplier, 1.0f);
+		const float RadiusYWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.Y) * ActorInteractionRadiusMultiplier, 1.0f);
+		
+		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Width, 0.0f) , FMath::Max(RadiusYWorld / Width, 0.0f) );
+ 		
+		FFluidInteractionForceSource Source;
+		Source.PositionRadius = FVector4f(PositionUV.X, PositionUV.Y, RadiusUV.X, RadiusUV.Y);
+		Source.ForceDensity = FVector4f(Force.X, Force.Y, 0.0f, 0.0f);
+		
+		if (Sources.Num() < MAX_FLUID_INTERACTION_FORCE_SOURCE)
+		{	
+			Sources.Add(Source); 
+		}
+	}
+
+	
+	return Sources;
 }
 
 bool UFluidSimulationComponent::TryResolveDirectionalLight(class ADirectionalLight*& OutLightActor) const
@@ -449,6 +635,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 												  FTextureRHIRef InCurlNoiseTexture, float InSimulationTime, float InCurlSimulationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength, float InCurlDensityMaskScale,
                                                   float InVorticityStrength, float InVisc, int32 InPressureIterations,
                                                   bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture,float InBaseDensityTarget,float InBaseDensityRecoverySpeed,float InBaseDensityDeadbandRatio,float InBaseDensityNoiseRepeat,
+												  const TArray<FFluidInteractionForceSource>& InInteractionForceSources,
 												  int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
 {
 	check(IsInRenderingThread());
@@ -608,6 +795,14 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 		Params.CurlSimulationSpeed = InCurlSimulationSpeed;
 		Params.CurlVelocityStrength = InCurlVelocityStrength;
 		Params.CurlDensityMaskScale = InCurlDensityMaskScale;
+		//Interaction Param
+		const uint32 InteractionForceSourceCount = FMath::Min(InInteractionForceSources.Num(), MAX_FLUID_INTERACTION_FORCE_SOURCE);
+		Params.InteractionForceSourceCount = InteractionForceSourceCount;
+		for (uint32 SourceIndex = 0; SourceIndex < InteractionForceSourceCount; ++SourceIndex)
+		{
+			Params.InteractionForcePositionRadius[SourceIndex] = InInteractionForceSources[SourceIndex].PositionRadius;
+			Params.InteractionForceVectorDensity[SourceIndex] = InInteractionForceSources[SourceIndex].ForceDensity;
+		}
 		Params.InvResolution  = InvResolution;
 		Params.Resolution     = ResolutionPt;
   
@@ -811,4 +1006,11 @@ void UFluidSimulationComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 		FogExtension.Reset();
 	}
 	
+	// 등록한 Interaction Overlapping 함수 unbinding 
+	if (InteractionBoundsComponent.IsValid())
+	{ 
+		InteractionBoundsComponent->OnComponentBeginOverlap.RemoveDynamic(this, &UFluidSimulationComponent::HandleInteractionBeginOverlap);
+		InteractionBoundsComponent->OnComponentEndOverlap.RemoveDynamic(this, &UFluidSimulationComponent::HandleInteractionEndOverlap);
+		InteractionBoundsComponent.Reset();	
+	}
 }
