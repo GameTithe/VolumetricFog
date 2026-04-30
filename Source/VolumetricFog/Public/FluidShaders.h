@@ -48,6 +48,36 @@ public:
 	}
 };
 
+class FFluidDensityMaintenanceCS : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FFluidDensityMaintenanceCS);
+	SHADER_USE_PARAMETER_STRUCT(FFluidDensityMaintenanceCS, FGlobalShader);
+	
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
+		
+		SHADER_PARAMETER_TEXTURE(Texture2D,NoiseTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, NoiseSampler)
+		
+		SHADER_PARAMETER(float, DeltaTime)
+		SHADER_PARAMETER(float, BaseDensityTarget)
+		SHADER_PARAMETER(float, BaseDensityRecoverySpeed)
+		SHADER_PARAMETER(float, BaseDensityDeadbandRatio)
+		SHADER_PARAMETER(float, BaseDensityNoiseRepeat)
+	
+		SHADER_PARAMETER(FVector2f, InvResolution)
+		SHADER_PARAMETER(FIntPoint, Resolution)
+	
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+}; 
+
 class FFluidDiffuseCS : public FGlobalShader
 {
 public:

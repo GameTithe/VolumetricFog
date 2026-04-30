@@ -1,0 +1,42 @@
+﻿#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> DensityInput;
+RWTexture2D<float> DensityOutput;
+
+Texture2D<float> NoiseTexture;
+SamplerState NoiseSampler;
+
+float DeltaTime;
+float BaseDensityTarget;
+float BaseDensityRecoverySpeed;
+float BaseDensityDeadbandRatio;
+float BaseDensityNoiseRepeat;
+
+float2 InvResolution;
+int2 Resolution;
+ 
+[numthreads(8,8,1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+	if (any(DTid.xy >= (uint2)Resolution))
+	{
+		return;
+	}
+	
+	float CurrentDensity = DensityInput[DTid.xy];
+	float2 UV = (float2(DTid.xy) + 0.5f) * InvResolution;
+	UV.y = 1 - UV.y;
+	
+	float2 NoiseUV = BaseDensityNoiseRepeat * UV;
+	float Noise = NoiseTexture.SampleLevel(NoiseSampler, NoiseUV, 0);
+	Noise = saturate(Noise);
+	
+	float TargetDensity = BaseDensityTarget * Noise;
+	float RefillThreshold = TargetDensity * ( 1.0f - BaseDensityDeadbandRatio);
+	
+	float RefillDensity = max( RefillThreshold - CurrentDensity, 0.0f);
+	RefillDensity =  RefillDensity * BaseDensityRecoverySpeed * DeltaTime;
+	
+	DensityOutput[DTid.xy] = CurrentDensity + RefillDensity;
+	
+}

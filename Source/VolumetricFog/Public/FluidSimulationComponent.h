@@ -151,6 +151,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
 	float SimulationWorldSize = 5000.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance")
+	bool bEnableDensityMaintenance = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance")
+	TObjectPtr<UTexture2D> BaseDensityNoiseTexture = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
+	float BaseDensityTarget = 300.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
+	float BaseDensityRecoverySpeed = 0.05f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
+	float BaseDensityDeadbandRatio = 0.5f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
+	float BaseDensityNoiseRepeat = 3.0f;
+	
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
 	TObjectPtr<UCurveFloat> HeightAttenuationCurve = nullptr;
 	
@@ -258,6 +277,13 @@ private:
 	 	float InVorticityStrength,
 	 	float InVisc,
 	 	int32 InPressureIterations,
+	 	// Fog Generation Use Noise
+	 	bool bInEnableDensityMaintenance,
+		FTextureRHIRef InBaseDensityNoiseTexture,
+		float InBaseDensityTarget,
+		float InBaseDensityRecoverySpeed,
+		float InBaseDensityDeadbandRatio,
+		float InBaseDensityNoiseRepeat,
 	 	// 반환용
 	 	int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex
 	 	);

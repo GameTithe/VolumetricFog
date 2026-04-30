@@ -486,7 +486,7 @@ void IntegrateRay(
              float LightT = ComputeLightTransmittance(P);
              
              //float3 StepScatter = (1.0f - StepT) * FogColor * LightT * IncidentLight ;//  * Phase;
-             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT * Phase;;
+             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT ; //* Phase;;
              Scattering += Transmittance * StepScatter;
              Transmittance *= StepT;
              
