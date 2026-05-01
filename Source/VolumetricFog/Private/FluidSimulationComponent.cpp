@@ -81,6 +81,7 @@ void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
 	RHICmdList.ClearUAVFloat(TempVelocityUAV, FVector4f(0, 0, 0, 0));
 
 	bInitialize = true;
+	bBaseDensityInitialized = false;
 }
 
 // ======== Fluid Simulation Component ========
@@ -965,10 +966,16 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 		Params.BaseDensityRecoverySpeed = FMath::Max(InBaseDensityRecoverySpeed, 0.0f);
 		Params.BaseDensityDeadbandRatio = FMath::Clamp(InBaseDensityDeadbandRatio, 0.0f, 1.0f);
 		Params.BaseDensityNoiseRepeat = FMath::Max(InBaseDensityNoiseRepeat, 0.1f);
+		const bool bInitializeBaseDensity = !InFluidResources->bBaseDensityInitialized;
+		Params.InitializeBaseDensity = bInitializeBaseDensity ? 1u : 0u;
 		
 		Params.InvResolution = InvResolution;
 		Params.Resolution = ResolutionPt;
 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+		if (bInitializeBaseDensity)
+		{
+			InFluidResources->bBaseDensityInitialized = true;
+		}
 		
 		CurDenIdx = NextDenIdx;
 	}

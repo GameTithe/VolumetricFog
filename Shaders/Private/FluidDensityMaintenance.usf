@@ -11,6 +11,7 @@ float BaseDensityTarget;
 float BaseDensityRecoverySpeed;
 float BaseDensityDeadbandRatio;
 float BaseDensityNoiseRepeat;
+uint InitializeBaseDensity;
 
 float2 InvResolution;
 int2 Resolution;
@@ -32,11 +33,21 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 	Noise = saturate(Noise);
 	
 	float TargetDensity = BaseDensityTarget * Noise;
-	float RefillThreshold = TargetDensity * ( 1.0f - BaseDensityDeadbandRatio);
 	
-	float RefillDensity = max( RefillThreshold - CurrentDensity, 0.0f);
-	RefillDensity =  RefillDensity * BaseDensityRecoverySpeed * DeltaTime;
+	// 초기화가 필요할 때
+	if (InitializeBaseDensity == 1)
+	{
+		DensityOutput[DTid.xy] = TargetDensity;
+		return;
+	}
 	
-	DensityOutput[DTid.xy] = CurrentDensity + RefillDensity;
-	
+	if (CurrentDensity >= TargetDensity)
+	{
+		DensityOutput[DTid.xy] = CurrentDensity;
+		return;
+	}
+	 
+	// 밀도 복구
+	float RecoveryAlpha = 1.0f - exp(-BaseDensityRecoverySpeed * DeltaTime); 
+	DensityOutput[DTid.xy] = lerp(CurrentDensity, TargetDensity, RecoveryAlpha);  
 }

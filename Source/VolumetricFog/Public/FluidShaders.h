@@ -71,6 +71,7 @@ public:
 		SHADER_PARAMETER(float, BaseDensityRecoverySpeed)
 		SHADER_PARAMETER(float, BaseDensityDeadbandRatio)
 		SHADER_PARAMETER(float, BaseDensityNoiseRepeat)
+		SHADER_PARAMETER(uint32, InitializeBaseDensity)
 	
 		SHADER_PARAMETER(FVector2f, InvResolution)
 		SHADER_PARAMETER(FIntPoint, Resolution)

@@ -13,6 +13,7 @@
 class UCurveFloat;
 class ADirectionalLight;
 class ULightComponent;
+class UPrimitiveComponent;
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -40,6 +41,7 @@ struct FFluidResources
     
 	int32 Resolution = 0;
 	bool bInitialize = false;
+	bool bBaseDensityInitialized = false;
 
 	int32 VelocityIndex = 0;
 	int32 DensityIndex = 0;
