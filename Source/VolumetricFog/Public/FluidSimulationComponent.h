@@ -14,6 +14,7 @@ class UCurveFloat;
 class ADirectionalLight;
 class ULightComponent;
 class UPrimitiveComponent;
+class UVolumeTexture;
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -136,6 +137,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction", meta = (ClampMin = "1.0"))
 	float ActorInteractionForceMultiplier = 5.0f;
 	
+	//Fog Modeling 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
+	TObjectPtr<UVolumeTexture> VolumeNoiseTexture; 
 	
 	// Fog Rendering
 	// Directional Light
@@ -292,7 +296,7 @@ private:
 	/** Curve Data dirty flag */
 	bool bWasUsingCurveAttenuation = false;
 	TWeakObjectPtr<UCurveFloat> LastHeightCurveAsset;
-	int32 LastHeightCurveLUTResolution = 0;
+	int32 LastHeightCurveLUTResolution = 0; 
 	
 	/** Resources */
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;

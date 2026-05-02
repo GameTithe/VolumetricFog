@@ -23,11 +23,14 @@ public:
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, HeightCurveSampler)
-		
-
+	
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
-
+	
+		// Modeling Volume Noise Texture
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D, VolumeNoiseTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, VolumeNoiseSampler)
+	
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneDepthViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, OutputViewport)
@@ -145,6 +148,7 @@ struct FFluidFogRenderState
 	float GOfHG = 0.0f;
 	
 	FTextureRHIRef DensityTexture;
+	FTextureRHIRef VolumeNoiseTexture;
 };
 // SceneViewExtension
 class FFogSceneViewExtension : public FSceneViewExtensionBase
@@ -171,7 +175,8 @@ private:
 
 	FFluidFogRenderState RenderState;
 	TRefCountPtr<IPooledRenderTarget> DensityPooledRT; 
-
+	TRefCountPtr<IPooledRenderTarget> VolumeNoisePooledRT;
+	
 	FDelegateHandle PostOpaqueDelegateHandle; 
 	
 	// Height Atteunation Resource 

@@ -10,6 +10,10 @@ SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
 SamplerState HeightCurveSampler;
 
+//Modeling
+Texture3D VolumeNoiseTexture;
+SamplerState VolumeNoiseSampler;
+
 // Stable Fluid Results
 Texture2D DensityTexture;
 SamplerState BilinearSampler;
@@ -279,6 +283,77 @@ float ComputeHeightAttenuation(float WorldZ)
     return ComputeAdaptiveHeightAttenuation(WorldZ);
 }
 
+float Hash12(float2 P)
+{
+    float3 P3 = frac(float3(P.xyx) * 0.1031f);
+    P3 += dot(P3, P3.yzx + 33.33f);
+    return frac((P3.x + P3.y) * P3.z);
+}
+float ValueNoise2D(float2 P)
+{
+    float2 I = floor(P);
+    float2 F = frac(P);
+    float A = Hash12(I);
+    float B = Hash12(I + float2(1.0f, 0.0f));
+    float C = Hash12(I + float2(0.0f, 1.0f));
+    float D = Hash12(I + float2(1.0f, 1.0f));
+    float2 U = F * F * (3.0f - 2.0f * F);
+    return lerp(lerp(A, B, U.x), lerp(C, D, U.x), U.y);
+}
+float FBM2D(float2 P)
+{
+    float V = 0.0f;
+    float Amp = 0.5f;
+    V += ValueNoise2D(P) * Amp;
+    P *= 2.03f;
+    Amp *= 0.5f;
+    V += ValueNoise2D(P) * Amp;
+    P *= 2.01f;
+    Amp *= 0.5f;
+    V += ValueNoise2D(P) * Amp;
+    return saturate(V);
+}
+float2 CloudLayerOffset(float HeightRatio)
+{
+    float2 P = float2(HeightRatio * 17.13f, HeightRatio * 41.71f);
+    float2 Offset;
+    Offset.x = FBM2D(P + 13.7f) * 2.0f - 1.0f;
+    Offset.y = FBM2D(P + 91.3f) * 2.0f - 1.0f;
+    return Offset;
+}
+float SampleCloudFilledDensity(float2 SimUV, float HeightRatio)
+{
+    const float DensityNormalize = 0.01f;
+    const float CloudWarpStrength = 0.045f;
+    const float CloudNoiseTiling = 5.0f;
+    const float CloudErosionStrength = 0.35f;
+    const float CloudTopErosion = 0.25f;
+    const float CloudThreshold = 0.12f;
+    const float CloudSoftness = 0.35f;
+    
+    float2 LayerOffset = CloudLayerOffset(HeightRatio) * CloudWarpStrength * HeightRatio;
+    float2 UV0 = SimUV + LayerOffset;
+    float2 UV1 = SimUV + LayerOffset * 0.55f + float2(0.018f, -0.011f) * HeightRatio;
+    float2 UV2 = SimUV - LayerOffset * 0.35f + float2(-0.013f, 0.017f) * HeightRatio;
+    
+    float D0 = DensityTexture.Sample(BilinearSampler, UV0).r;
+    float D1 = DensityTexture.Sample(BilinearSampler, UV1).r;
+    float D2 = DensityTexture.Sample(BilinearSampler, UV2).r;
+    float RawDensity = max(max(D0, D1 * 0.85f), D2 * 0.65f);
+    float Density01 = saturate(RawDensity * DensityNormalize);
+    float ShapeNoise = FBM2D(SimUV * CloudNoiseTiling + HeightRatio * 3.7f);
+    float Erosion = (ShapeNoise - 0.5f) * CloudErosionStrength;
+    
+    Erosion -= HeightRatio * CloudTopErosion;
+    
+    return smoothstep(
+    CloudThreshold,
+        CloudThreshold + CloudSoftness,
+        Density01 + Erosion
+    );
+}
+
+
 float SampleDensity3D(float3 WorldPos)
 {
     // 높이 제한
@@ -294,17 +369,67 @@ float SampleDensity3D(float3 WorldPos)
         return 0.0f;
     }
     
-    float RawDensity2D = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
-    if (RawDensity2D <= 1e-6)
-    {
-        return 0.0f;
-    } 
+    // float RawDensity2D = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
+    // if (RawDensity2D <= 1e-6)
+    // {
+    //     return 0.0f;
+    // }
+    //
+    // // Curve Data 사용
+    // float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
+    // float Demsity01 = saturate(RawDensity2D * 0.01f);
+    //
+    // return Demsity01 * HeightMask * FogDensityMultiplier;
+
+    // fallback if do not have volume noise texture 
+    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
+    float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
+    float CloudDensity = SampleCloudFilledDensity(SimUV, HeightRatio);
     
-    // Curve Data 사용    
-    float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));  
-    float Demsity01 = saturate(RawDensity2D * 0.01f); 
+    float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
+    return CloudDensity * HeightMask * FogDensityMultiplier;
     
-    return Demsity01 * HeightMask * FogDensityMultiplier; 
+    //// 연기의 끝 부분 처리가 안되어있음 
+    //float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
+    //float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
+    // 
+    //float3 VolumeUVW = float3(SimUV, HeightRatio);
+    //float RawCoverage = DensityTexture.Sample(BilinearSampler, SimUV).r;
+    //float Coverage = saturate((RawCoverage) / 250.0f);
+    //
+    //float ShapeRaw = VolumeNoiseTexture.SampleLevel(
+    //    VolumeNoiseSampler,
+    //    VolumeUVW,
+    //    0.0f
+    //).r;
+    //float Threshold = lerp(0.82f, 0.18f, Coverage); 
+    //float Shape = smoothstep(Threshold, Threshold + 0.3f, ShapeRaw);
+    //float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
+    //
+    //return Shape * HeightMask * FogDensityMultiplier;
+    
+    
+    // float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
+    // float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
+    // float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
+    // float RawCoverage = DensityTexture.Sample(BilinearSampler, SimUV).r;
+    // float Coverage = saturate((RawCoverage) / 250.0f);
+    // float3 VolumeUVW = float3(SimUV, HeightRatio); 
+    // float3 NoiseUVW = frac(VolumeUVW * float3(3, 3, 1.0f));
+    //
+    // float4 Noise = VolumeNoiseTexture.SampleLevel(
+    //     VolumeNoiseSampler,
+    //     NoiseUVW,
+    //     0.0f
+    // );
+    // float ShapeRaw = Noise.r;
+    // float Threshold = lerp(0.78f, 0.12f, Coverage);
+    // float BaseShape = smoothstep(Threshold, Threshold + 0.10f, ShapeRaw);
+    // float WorleyFBM = dot(Noise.gba, float3(0.7f, 0.25f, 0.005f));
+    // float EdgeMask = 1.0f - smoothstep(0.35f, 0.85f, BaseShape);
+    // float ErosionStrength = 0.28f;
+    // float ErodedShape = saturate(BaseShape - WorleyFBM * ErosionStrength * EdgeMask);
+    // return ErodedShape * HeightMask * FogDensityMultiplier;
 }
 
 // 3D Like 2D
@@ -445,10 +570,10 @@ void IntegrateRay(
     float StepSize = RayLen / max((float) Steps, 1.0f);
     
     // 밴딩 완화 
-    //float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
-    //float T = tStart + Jitter;
+    float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
+    float T = tStart + Jitter;
     
-    float T = tStart;
+    //float T = tStart;
     
     float Transmittance = 1.0f; // SceneColor를 얼마나 남길지 비율
     float3 Scattering = 0.0f;   // 연기 색

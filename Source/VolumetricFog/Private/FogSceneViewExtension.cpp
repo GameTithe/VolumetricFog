@@ -31,8 +31,9 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 {
 	const FFluidFogRenderState& State = RenderState;
 	
-	if (!State.bEnable || !State.DensityTexture || !DensityPooledRT)
+	if (!State.bEnable || !State.DensityTexture || !DensityPooledRT || !VolumeNoisePooledRT)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[RenderFog_RenderThread]: Need Texture!!"));
 		return;
 	}
 	
@@ -71,6 +72,18 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	{
 		HeightCurveRDG = SystemTextures.White;
 	} 
+	
+	/** Volume Noise Texture For Fog Modeling*/
+	FRDGTextureRef VolumeNoiseRDG;
+	VolumeNoiseRDG = GraphBuilder.RegisterExternalTexture(VolumeNoisePooledRT);
+	//if (VolumeNoisePooledRT)
+	//{
+	//	VolumeNoiseRDG = GraphBuilder.RegisterExternalTexture(VolumeNoisePooledRT);
+	//}
+	//else
+	//{
+	//	//TODO
+	//}
 	
 	// Shader Params 
 	auto* Params = GraphBuilder.AllocParameters<FFogRayMarchingPS::FParameters>();
@@ -124,6 +137,10 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	// Phase Function
 	Params->GOfHG = State.GOfHG;
 	
+	// Modeling
+	Params->VolumeNoiseTexture = VolumeNoiseRDG;
+	Params->VolumeNoiseSampler = TStaticSamplerState<SF_Trilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+	
 	// Read: Scene Color
 	// Write: FogOutput
 	Params->RenderTargets[0] = FogOutput.GetRenderTargetBinding();
@@ -156,6 +173,7 @@ void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRender
 	check(IsInRenderingThread());
 	
 	const bool bDensityChanged = (RenderState.DensityTexture != InState.DensityTexture);
+	const bool bNoiseChanged = (RenderState.VolumeNoiseTexture != InState.VolumeNoiseTexture);
 	
 	RenderState = InState;
 	
@@ -169,6 +187,19 @@ void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRender
 	else
 	{
 		DensityPooledRT.SafeRelease();
+	}
+	
+	// Volume Noise Texture  
+	if (RenderState.VolumeNoiseTexture)
+	{
+		if (bNoiseChanged || !VolumeNoisePooledRT)
+		{
+			VolumeNoisePooledRT = CreateRenderTarget(RenderState.VolumeNoiseTexture, TEXT("VolumeNoise"));
+		}
+	}
+	else
+	{
+		VolumeNoisePooledRT.SafeRelease();
 	}
 }
 

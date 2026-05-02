@@ -17,6 +17,7 @@
 #include "Components/LightComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Components/PrimitiveComponent.h" 
+#include "Engine/VolumeTexture.h"
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -414,7 +415,7 @@ TArray<FFluidInteractionForceSource> UFluidSimulationComponent::BuildInteraction
 		const float RadiusXWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.X) * ActorInteractionRadiusMultiplier, 1.0f);
 		const float RadiusYWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.Y) * ActorInteractionRadiusMultiplier, 1.0f);
 		
-		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Width, 0.0f) , FMath::Max(RadiusYWorld / Width, 0.0f) );
+		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Height, 0.0f) , FMath::Max(RadiusYWorld / Width, 0.0f) );
  		
 		FFluidInteractionForceSource Source;
 		Source.PositionRadius = FVector4f(PositionUV.X, PositionUV.Y, RadiusUV.X, RadiusUV.Y);
@@ -527,6 +528,13 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	}
 	
 	// Density Texture의 인덱스를 여기서는 알 수 없으니 따로 채워줘야 함
+	
+	// Volume Noise Texture 
+	if (VolumeNoiseTexture && VolumeNoiseTexture->GetResource())
+	{
+		State.VolumeNoiseTexture = VolumeNoiseTexture->GetResource()->TextureRHI;
+	}
+	
 	
 	//Dir Of Directional Light 	
 	FVector FinalToLight = SelfShadowLightDirection.GetSafeNormal(); 
