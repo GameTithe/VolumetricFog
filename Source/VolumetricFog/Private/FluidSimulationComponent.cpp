@@ -18,6 +18,7 @@
 #include "Engine/DirectionalLight.h"
 #include "Components/PrimitiveComponent.h" 
 #include "Engine/VolumeTexture.h"
+#include "DrawDebugHelpers.h"
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -177,9 +178,16 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	
+	 
+	if (DirectionalLightActor)
+	{	
+		//FRotator LightRotation = DirectionalLightActor->GetActorRotation();
+		//LightRotation.Yaw += DeltaTime * 20.0f;
+		////LightRotation.Yaw = FMath::UnwindDegrees(LightRotation.Yaw);
+		//DirectionalLightActor->SetActorRotation(LightRotation); 
+	}
 	// Resources가 초기화되지 않았으면 Early Return
-	if (!FluidResources)
+		if (!FluidResources)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TickComponent: Fluid Resources is Null"));
 		return;
@@ -414,11 +422,43 @@ TArray<FFluidInteractionForceSource> UFluidSimulationComponent::BuildInteraction
 		
 		const float RadiusXWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.X) * ActorInteractionRadiusMultiplier, 1.0f);
 		const float RadiusYWorld = FMath::Max(static_cast<float>(ComponentBounds.BoxExtent.Y) * ActorInteractionRadiusMultiplier, 1.0f);
-		
-		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Height, 0.0f) , FMath::Max(RadiusYWorld / Width, 0.0f) );
+			
+		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Width, 0.0f) , FMath::Max(RadiusYWorld / Height, 0.0f) );
  		
+		const FVector2f MoveDirUV = SimVelocity.GetSafeNormal();
+		const FVector2f ForwardPositionUV(
+		FMath::Clamp(PositionUV.X + MoveDirUV.X * RadiusUV.X * 2.5f, 0.0f, 1.0f),
+		FMath::Clamp(PositionUV.Y + MoveDirUV.Y * RadiusUV.Y * 2.5f, 0.0f, 1.0f)	
+		);
+		const FVector ForwardWorldPosition(
+	BoundsOrigin.X + (ForwardPositionUV.X * 2.0f - 1.0f) * BoundsExtents.X,
+	BoundsOrigin.Y + (1.0f - ForwardPositionUV.Y * 2.0f) * BoundsExtents.Y,
+	CurrentLocation.Z
+);
+			DrawDebugSphere(
+		GetWorld(),
+		ForwardWorldPosition,
+		30.0f,
+		12,
+		FColor::Cyan,
+		false,
+		0.0f,
+		0,
+		2.0f
+	);
+			DrawDebugLine(
+			GetWorld(),
+			CurrentLocation,
+			ForwardWorldPosition,
+			FColor::Cyan,
+			false,
+			0.0f,
+			0,
+			2.0f
+		);
+		
 		FFluidInteractionForceSource Source;
-		Source.PositionRadius = FVector4f(PositionUV.X, PositionUV.Y, RadiusUV.X, RadiusUV.Y);
+		Source.PositionRadius = FVector4f(ForwardPositionUV.X, ForwardPositionUV.Y, RadiusUV.X, RadiusUV.Y);
 		Source.ForceDensity = FVector4f(Force.X, Force.Y, 0.0f, 0.0f);
 		
 		if (Sources.Num() < MAX_FLUID_INTERACTION_FORCE_SOURCE)
@@ -533,6 +573,11 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	if (VolumeNoiseTexture && VolumeNoiseTexture->GetResource())
 	{
 		State.VolumeNoiseTexture = VolumeNoiseTexture->GetResource()->TextureRHI;
+	}
+	
+	if (ShapeNoiseTexture && ShapeNoiseTexture->GetResource())
+	{
+		State.ShapeNoiseTexture = ShapeNoiseTexture->GetResource()->TextureRHI;
 	}
 	
 	
@@ -774,7 +819,8 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	}
 	// Step 4: Force
 	{
-
+		SCOPED_DRAW_EVENTF(RHICmdList, FluidInteractionForce, TEXT("Fluid.InteractionForce") );
+		
 		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.Force");
 
 		int32 NextVelIdx = 1 - CurVelIdx;

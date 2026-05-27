@@ -1,6 +1,11 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
+#ifndef PI
+#define PI 3.14159265358979323846f
+#endif
+
+
 // Scene Textures
 Texture2D SceneColorTexture;
 Texture2D SceneDepthTexture;
@@ -13,6 +18,9 @@ SamplerState HeightCurveSampler;
 //Modeling
 Texture3D VolumeNoiseTexture;
 SamplerState VolumeNoiseSampler;
+
+Texture2D ShapeNoiseTexture;
+SamplerState ShapeNoiseSampler;
 
 // Stable Fluid Results
 Texture2D DensityTexture;
@@ -226,21 +234,7 @@ float ComputeCurveHeightAttenuation(float WorldZ)
 {
     float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
     float HeightRatio = saturate((WorldZ - FogBaseHeight) / HeightSpan);
-    return saturate(SampleHeightCurveLUT(HeightRatio));
-    
-    // float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3F);
-    // float HeightRatio =  saturate((WorldZ - FogBaseHeight)/ HeightSpan);
-    //
-    // if (HeightRatio <=HeightFadeStartRatio)
-    // {
-    //     return 1.0f;
-    // }
-    //
-    // float FadeT = saturate(
-    //     (HeightRatio - HeightFadeStartRatio) /  max(1.0f - HeightFadeStartRatio, 1e-3f)
-    // );
-    //
-    // return saturate(SampleHeightCurveLUT(FadeT));
+    return saturate(SampleHeightCurveLUT(HeightRatio)); 
 }
 
 float ComputeLegacyHeightAttenuation(float WorldZ)
@@ -303,57 +297,60 @@ float ValueNoise2D(float2 P)
 float FBM2D(float2 P)
 {
     float V = 0.0f;
-    float Amp = 0.5f;
-    V += ValueNoise2D(P) * Amp;
+    float Amplitude = 0.5f; // 진폭 (영향력) 
+    float H = 0.5f;  
+    
+    //  3옥타브
+    V += ValueNoise2D(P) * Amplitude;
+    
     P *= 2.03f;
-    Amp *= 0.5f;
-    V += ValueNoise2D(P) * Amp;
+    Amplitude *= H;
+    
+    V += ValueNoise2D(P) * Amplitude;
     P *= 2.01f;
-    Amp *= 0.5f;
-    V += ValueNoise2D(P) * Amp;
+    Amplitude *= H;
+    
+    V += ValueNoise2D(P) * Amplitude;
     return saturate(V);
-}
-float2 CloudLayerOffset(float HeightRatio)
-{
-    float2 P = float2(HeightRatio * 17.13f, HeightRatio * 41.71f);
-    float2 Offset;
-    Offset.x = FBM2D(P + 13.7f) * 2.0f - 1.0f;
-    Offset.y = FBM2D(P + 91.3f) * 2.0f - 1.0f;
-    return Offset;
-}
-float SampleCloudFilledDensity(float2 SimUV, float HeightRatio)
-{
-    const float DensityNormalize = 0.01f;
-    const float CloudWarpStrength = 0.045f;
-    const float CloudNoiseTiling = 5.0f;
-    const float CloudErosionStrength = 0.35f;
-    const float CloudTopErosion = 0.25f;
-    const float CloudThreshold = 0.12f;
-    const float CloudSoftness = 0.35f;
-    
-    float2 LayerOffset = CloudLayerOffset(HeightRatio) * CloudWarpStrength * HeightRatio;
-    float2 UV0 = SimUV + LayerOffset;
-    float2 UV1 = SimUV + LayerOffset * 0.55f + float2(0.018f, -0.011f) * HeightRatio;
-    float2 UV2 = SimUV - LayerOffset * 0.35f + float2(-0.013f, 0.017f) * HeightRatio;
-    
-    float D0 = DensityTexture.Sample(BilinearSampler, UV0).r;
-    float D1 = DensityTexture.Sample(BilinearSampler, UV1).r;
-    float D2 = DensityTexture.Sample(BilinearSampler, UV2).r;
-    float RawDensity = max(max(D0, D1 * 0.85f), D2 * 0.65f);
-    float Density01 = saturate(RawDensity * DensityNormalize);
-    float ShapeNoise = FBM2D(SimUV * CloudNoiseTiling + HeightRatio * 3.7f);
-    float Erosion = (ShapeNoise - 0.5f) * CloudErosionStrength;
-    
-    Erosion -= HeightRatio * CloudTopErosion;
-    
-    return smoothstep(
-    CloudThreshold,
-        CloudThreshold + CloudSoftness,
-        Density01 + Erosion
-    );
-}
+} 
 
-
+float SampleExtrudedShapedDensity(float2 SimUV, float HeightRatio)
+{
+    const float DensityNormalize = 0.008f;
+    const float LargeNoiseTiling = 2.5f;
+    const float DetailNoiseTiling = 7.0f;
+    const float ShapeStrength = 0.18f;
+    const float DetailErosionStrength = 0.08f;
+    const float Threshold = 0.05f;
+    const float Softness = 0.35f;
+    float RawDensity = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
+    float Coverage = saturate(RawDensity * DensityNormalize);
+    if (Coverage <= 1e-4f)
+    {
+        return 0.0f;
+    }
+    //float LargeShape = FBM2D(SimUV * LargeNoiseTiling);
+    //float DetailShape = FBM2D(SimUV * DetailNoiseTiling + 19.37f);
+    
+    float LargeShape = ShapeNoiseTexture.SampleLevel(
+        ShapeNoiseSampler,
+        SimUV * LargeNoiseTiling,
+        0.0f
+    ).r;
+     
+    
+    float DetailShape = ShapeNoiseTexture.SampleLevel(
+        ShapeNoiseSampler,
+        SimUV * DetailNoiseTiling + float2(0.37f, 0.61f),
+        0.0f
+    ).r;
+    
+    float ModeledDensity = Coverage;
+    ModeledDensity += (LargeShape - 0.5f) * ShapeStrength * Coverage;
+    ModeledDensity -= DetailShape * DetailErosionStrength * (1.0f - Coverage);
+    float ShapeMask = smoothstep(Threshold, Threshold + Softness, ModeledDensity);
+    return Coverage * ShapeMask;
+}
 float SampleDensity3D(float3 WorldPos)
 {
     // 높이 제한
@@ -367,69 +364,13 @@ float SampleDensity3D(float3 WorldPos)
     if (SimUV.x < 0.0f || SimUV.x > 1.0f || SimUV.y < 0.0f || SimUV.y > 1.0f)
     {
         return 0.0f;
-    }
-    
-    // float RawDensity2D = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
-    // if (RawDensity2D <= 1e-6)
-    // {
-    //     return 0.0f;
-    // }
-    //
-    // // Curve Data 사용
-    // float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
-    // float Demsity01 = saturate(RawDensity2D * 0.01f);
-    //
-    // return Demsity01 * HeightMask * FogDensityMultiplier;
-
-    // fallback if do not have volume noise texture 
+    }  
+   
     float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
     float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
-    float CloudDensity = SampleCloudFilledDensity(SimUV, HeightRatio);
-    
+    float FogDensity = SampleExtrudedShapedDensity(SimUV, HeightRatio);
     float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
-    return CloudDensity * HeightMask * FogDensityMultiplier;
-    
-    //// 연기의 끝 부분 처리가 안되어있음 
-    //float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
-    //float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
-    // 
-    //float3 VolumeUVW = float3(SimUV, HeightRatio);
-    //float RawCoverage = DensityTexture.Sample(BilinearSampler, SimUV).r;
-    //float Coverage = saturate((RawCoverage) / 250.0f);
-    //
-    //float ShapeRaw = VolumeNoiseTexture.SampleLevel(
-    //    VolumeNoiseSampler,
-    //    VolumeUVW,
-    //    0.0f
-    //).r;
-    //float Threshold = lerp(0.82f, 0.18f, Coverage); 
-    //float Shape = smoothstep(Threshold, Threshold + 0.3f, ShapeRaw);
-    //float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
-    //
-    //return Shape * HeightMask * FogDensityMultiplier;
-    
-    
-    // float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
-    // float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
-    // float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
-    // float RawCoverage = DensityTexture.Sample(BilinearSampler, SimUV).r;
-    // float Coverage = saturate((RawCoverage) / 250.0f);
-    // float3 VolumeUVW = float3(SimUV, HeightRatio); 
-    // float3 NoiseUVW = frac(VolumeUVW * float3(3, 3, 1.0f));
-    //
-    // float4 Noise = VolumeNoiseTexture.SampleLevel(
-    //     VolumeNoiseSampler,
-    //     NoiseUVW,
-    //     0.0f
-    // );
-    // float ShapeRaw = Noise.r;
-    // float Threshold = lerp(0.78f, 0.12f, Coverage);
-    // float BaseShape = smoothstep(Threshold, Threshold + 0.10f, ShapeRaw);
-    // float WorleyFBM = dot(Noise.gba, float3(0.7f, 0.25f, 0.005f));
-    // float EdgeMask = 1.0f - smoothstep(0.35f, 0.85f, BaseShape);
-    // float ErosionStrength = 0.28f;
-    // float ErodedShape = saturate(BaseShape - WorleyFBM * ErosionStrength * EdgeMask);
-    // return ErodedShape * HeightMask * FogDensityMultiplier;
+    return FogDensity * HeightMask * FogDensityMultiplier;
 }
 
 // 3D Like 2D
@@ -469,9 +410,8 @@ float HenyeyGreensteinPhaseFunction(float CosTheta, float G)
     float Denom = max(1.0f + GG - 2.0f  * G * CosTheta, 1e-4f);
     
     // 1/4pi까지 곱하는게 본래 식인다. 
-    return (1.0f - GG) / (Denom * sqrt(Denom));
-        
-}
+    return 1 / (4 * PI) * (1.0f - GG) / (Denom * sqrt(Denom));
+} 
 float ComputeLightTransmittance(float3 P)
 {
     // 2D Simulation
@@ -585,7 +525,7 @@ void IntegrateRay(
     //Phase Function Params
     float CosTheta = clamp(dot(SelfShadowLightDirection, -RayDir) , -1.0f, 1.0f);
     float Phase = HenyeyGreensteinPhaseFunction(CosTheta, GOfHG); 
-        
+    
     [loop]
     for (int i = 0; i < Steps; ++i)
     {   
@@ -610,8 +550,7 @@ void IntegrateRay(
              float ScatteringRatio = SigmaS / SigmaT;
              float LightT = ComputeLightTransmittance(P);
              
-             //float3 StepScatter = (1.0f - StepT) * FogColor * LightT * IncidentLight ;//  * Phase;
-             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT ; //* Phase;;
+             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT * Phase * IncidentLight;  
              Scattering += Transmittance * StepScatter;
              Transmittance *= StepT;
              

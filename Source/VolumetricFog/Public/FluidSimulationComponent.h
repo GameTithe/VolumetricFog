@@ -141,6 +141,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
 	TObjectPtr<UVolumeTexture> VolumeNoiseTexture; 
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
+	TObjectPtr<UTexture2D> ShapeNoiseTexture;
+	
 	// Fog Rendering
 	// Directional Light
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight")

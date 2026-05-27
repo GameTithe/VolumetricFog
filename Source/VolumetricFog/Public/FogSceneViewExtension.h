@@ -27,7 +27,9 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 	
-		// Modeling Volume Noise Texture
+		// Modeling Noise Textures
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ShapeNoiseTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, ShapeNoiseSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture3D, VolumeNoiseTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, VolumeNoiseSampler)
 	
@@ -149,6 +151,8 @@ struct FFluidFogRenderState
 	
 	FTextureRHIRef DensityTexture;
 	FTextureRHIRef VolumeNoiseTexture;
+	FTextureRHIRef ShapeNoiseTexture;
+	
 };
 // SceneViewExtension
 class FFogSceneViewExtension : public FSceneViewExtensionBase
@@ -176,6 +180,7 @@ private:
 	FFluidFogRenderState RenderState;
 	TRefCountPtr<IPooledRenderTarget> DensityPooledRT; 
 	TRefCountPtr<IPooledRenderTarget> VolumeNoisePooledRT;
+	TRefCountPtr<IPooledRenderTarget> ShapeNoisePooledRT;
 	
 	FDelegateHandle PostOpaqueDelegateHandle; 
 	
