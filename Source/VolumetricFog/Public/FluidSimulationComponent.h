@@ -243,9 +243,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
 	FVector SelfShadowLightDirection = FVector(0.4f, 0.2f, 1.0f);
 	
+	[[depricated]]
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
 	FLinearColor SelfShadowLightColor = FLinearColor::White;
 	
+	[[depricated]]
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
 	float SelfShadowLightIntensity = 1.0f;
 	

@@ -1,6 +1,7 @@
 #include "FluidSimulationComponent.h"
- 
 
+
+#include "DiffUtils.h"
 #include "FluidShaders.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
@@ -425,37 +426,39 @@ TArray<FFluidInteractionForceSource> UFluidSimulationComponent::BuildInteraction
 			
 		const FVector2f RadiusUV (FMath::Max(RadiusXWorld / Width, 0.0f) , FMath::Max(RadiusYWorld / Height, 0.0f) );
  		
-		const FVector2f MoveDirUV = SimVelocity.GetSafeNormal();
-		const FVector2f ForwardPositionUV(
-		FMath::Clamp(PositionUV.X + MoveDirUV.X * RadiusUV.X * 2.5f, 0.0f, 1.0f),
-		FMath::Clamp(PositionUV.Y + MoveDirUV.Y * RadiusUV.Y * 2.5f, 0.0f, 1.0f)	
-		);
+		// Debug For Add Force
+		 const FVector2f MoveDirUV = SimVelocity.GetSafeNormal();
+		 const FVector2f ForwardPositionUV(
+		 FMath::Clamp(PositionUV.X + MoveDirUV.X * RadiusUV.X * 2.5f, 0.0f, 1.0f),
+		 FMath::Clamp(PositionUV.Y + MoveDirUV.Y * RadiusUV.Y * 2.5f, 0.0f, 1.0f)	
+		 );
+		
 		const FVector ForwardWorldPosition(
-	BoundsOrigin.X + (ForwardPositionUV.X * 2.0f - 1.0f) * BoundsExtents.X,
-	BoundsOrigin.Y + (1.0f - ForwardPositionUV.Y * 2.0f) * BoundsExtents.Y,
-	CurrentLocation.Z
-);
-			DrawDebugSphere(
-		GetWorld(),
-		ForwardWorldPosition,
-		30.0f,
-		12,
-		FColor::Cyan,
-		false,
-		0.0f,
-		0,
-		2.0f
-	);
-			DrawDebugLine(
-			GetWorld(),
-			CurrentLocation,
-			ForwardWorldPosition,
-			FColor::Cyan,
-			false,
-			0.0f,
-			0,
-			2.0f
-		);
+			BoundsOrigin.X + (ForwardPositionUV.X * 2.0f - 1.0f) * BoundsExtents.X,
+			BoundsOrigin.Y + (1.0f - ForwardPositionUV.Y * 2.0f) * BoundsExtents.Y,
+			CurrentLocation.Z	
+		);  
+		// DrawDebugSphere(
+		// 	GetWorld(),
+		// 	ForwardWorldPosition,
+		// 	30.0f,
+		// 	12,
+		// 	FColor::Cyan,
+		// 	false,
+		// 	0.0f,
+		// 	0,
+		// 	2.0f
+		// );
+		// DrawDebugLine(
+		// 	GetWorld(),
+		// 	CurrentLocation,
+		// 	ForwardWorldPosition,
+		// 	FColor::Cyan,
+		// 	false,
+		// 	0.0f,
+		// 	0,
+		// 	2.0f
+		// );
 		
 		FFluidInteractionForceSource Source;
 		Source.PositionRadius = FVector4f(ForwardPositionUV.X, ForwardPositionUV.Y, RadiusUV.X, RadiusUV.Y);

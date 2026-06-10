@@ -85,12 +85,8 @@ float GOfHG;
 
 // 스크린 UV -> 월드 방향 벡터 생성
 // Depth Buffer에서 실제 위치를 복원하는 함수
-float3 ReconstructWorldDir(float2 UV)
-{
-    // UV to NDC
-    float2 NDC = UV * 2.f - 1.0f;
-    NDC.y = -NDC.y;
-     
+float3 ReconstructWorldDir(float2 NDC)
+{ 
     float4 WorldFar = mul(float4(NDC, 1.0f, 1.0f), InvViewProjectionMatrix);
     WorldFar.xyz /= WorldFar.w;
 
@@ -119,21 +115,29 @@ float2 GetOutputViewportUV(float4 SvPosition)
 {
   return (SvPosition.xy - OutputViewport_ViewportMin) * OutputViewport_ViewportSizeInverse;
 }
+float2 ViewportUVToNDC(float2 ViewportUV)
+{
+    float2 NDC = ViewportUV * 2.0f - 1.0f;
+    NDC.y = -NDC.y;
+    return NDC;
+}
 
 // Viewport: PIE 창 안의 게임화면   
 // SceneColor: Render Target(원본? 크기) 
 float2 GetSceneColorUV(float2 ViewportUV)
 {
-  float2 SamplePosition = ViewportUV * SceneColorViewport_ViewportSize + SceneColorViewport_ViewportMin;
-  float2 UV = SamplePosition * SceneColorViewport_ExtentInverse;
-  return clamp(UV, SceneColorViewport_UVViewportBilinearMin,SceneColorViewport_UVViewportBilinearMax);
-}
+    float2 SamplePosition = ViewportUV * SceneColorViewport_ViewportSize + SceneColorViewport_ViewportMin;
+    float2 UV = SamplePosition * SceneColorViewport_ExtentInverse;
+    // View Rect에 맞는 UV 좌표로 Clamping
+    return clamp(UV, SceneColorViewport_UVViewportBilinearMin, SceneColorViewport_UVViewportBilinearMax);
+} 
 
 float2 GetSceneDepthUV(float2 ViewportUV)
 {
-  float2 SamplePosition = ViewportUV * SceneDepthViewport_ViewportSize +  SceneDepthViewport_ViewportMin;
-  float2 UV = SamplePosition * SceneDepthViewport_ExtentInverse;
-  return clamp(UV, SceneDepthViewport_UVViewportBilinearMin, SceneDepthViewport_UVViewportBilinearMax);
+    float2 SamplePosition = ViewportUV * SceneDepthViewport_ViewportSize +  SceneDepthViewport_ViewportMin;
+    float2 UV = SamplePosition * SceneDepthViewport_ExtentInverse;
+    // View Rect에 맞는 UV 좌표로 Clamping
+    return clamp(UV, SceneDepthViewport_UVViewportBilinearMin, SceneDepthViewport_UVViewportBilinearMax);
 }
 
 //float3 ReconstructWorldPos(float2 UV, float DeviceDepth)
@@ -175,16 +179,12 @@ float2 GetSceneDepthUV(float2 ViewportUV)
 //} 
 
 // Scene Depth -> 선형 카메라 거리 변환
-float GetLinearSceneDepth(float2 DepthUV, float2 ViewportUV)
+float GetLinearSceneDepth(float2 DepthUV, float2 NDC)
 {
     float SceneDepth = SceneDepthTexture.Sample(SceneDepthSampler, DepthUV).r;
 
-    float4 ClipSpacePosition;
-    ClipSpacePosition.xy = ViewportUV * 2.0f - 1.0f;
-    ClipSpacePosition.y = -ClipSpacePosition.y;
-    ClipSpacePosition.z = SceneDepth;
-    ClipSpacePosition.w = 1.0f;
-
+    float4 ClipSpacePosition = float4(NDC, SceneDepth, 1.0f);
+  
     float4 WorldPosition = mul(ClipSpacePosition, InvViewProjectionMatrix);
     WorldPosition.xyz /= WorldPosition.w;
     
@@ -314,42 +314,37 @@ float FBM2D(float2 P)
     return saturate(V);
 } 
 
-float SampleExtrudedShapedDensity(float2 SimUV, float HeightRatio)
+float SampleExtrudedShapedDensity(float2 SimUV)
 {
-    const float DensityNormalize = 0.008f;
-    const float LargeNoiseTiling = 2.5f;
-    const float DetailNoiseTiling = 7.0f;
-    const float ShapeStrength = 0.18f;
-    const float DetailErosionStrength = 0.08f;
-    const float Threshold = 0.05f;
-    const float Softness = 0.35f;
+    const float DensityNormalize = 0.007f;
+    const float NoiseTiling = 1.0f;
+    const float NoiseStrength = 0.5f;
+    const float Threshold = 0.01f;
+    const float Softness = 0.10f;
+    
     float RawDensity = max(DensityTexture.Sample(BilinearSampler, SimUV).r, 0.0f);
     float Coverage = saturate(RawDensity * DensityNormalize);
+
     if (Coverage <= 1e-4f)
     {
         return 0.0f;
     }
+
     //float LargeShape = FBM2D(SimUV * LargeNoiseTiling);
     //float DetailShape = FBM2D(SimUV * DetailNoiseTiling + 19.37f);
     
-    float LargeShape = ShapeNoiseTexture.SampleLevel(
+    float Noise = ShapeNoiseTexture.SampleLevel(
         ShapeNoiseSampler,
-        SimUV * LargeNoiseTiling,
+        SimUV * NoiseTiling,
         0.0f
     ).r;
-     
-    
-    float DetailShape = ShapeNoiseTexture.SampleLevel(
-        ShapeNoiseSampler,
-        SimUV * DetailNoiseTiling + float2(0.37f, 0.61f),
-        0.0f
-    ).r;
-    
-    float ModeledDensity = Coverage;
-    ModeledDensity += (LargeShape - 0.5f) * ShapeStrength * Coverage;
-    ModeledDensity -= DetailShape * DetailErosionStrength * (1.0f - Coverage);
-    float ShapeMask = smoothstep(Threshold, Threshold + Softness, ModeledDensity);
-    return Coverage * ShapeMask;
+
+    float Shape = lerp(1.0f - NoiseStrength, 1.0f, Noise); // [1.0f - noiseStrength, 1.0f] 에 분포 
+    float Density = Coverage  * Shape; // Coverage * Shape를 통해서 Density 재구성
+
+    float Mask = smoothstep(Threshold, Threshold + Softness, Density);
+ 
+    return Density * Mask;
 }
 float SampleDensity3D(float3 WorldPos)
 {
@@ -366,14 +361,12 @@ float SampleDensity3D(float3 WorldPos)
         return 0.0f;
     }  
    
-    float HeightSpan = max(FogMaxHeight - FogBaseHeight, 1e-3f);
-    float HeightRatio = saturate((WorldPos.z - FogBaseHeight) / HeightSpan);
-    float FogDensity = SampleExtrudedShapedDensity(SimUV, HeightRatio);
+    float FogDensity = SampleExtrudedShapedDensity(SimUV);
     float HeightMask = saturate(ComputeHeightAttenuation(WorldPos.z));
     return FogDensity * HeightMask * FogDensityMultiplier;
 }
 
-// 3D Like 2D
+// 3D Like 2D   
 float SampleDensity2D(float3 WorldPos)
 {
     float2 SimUV = WorldToSimulationUV(WorldPos.xy);
@@ -480,9 +473,9 @@ void IntegrateRay(
     float tStart,
     float tEnd,
     float2 PixelPos,
-    out float OutTransmittance,
-    out float3 OutScattering,
-    out float OutDebugShadow
+    out float TransmittanceRef,
+    out float3 ScatteringRef,
+    out float DebugShadowRef
 )
 {
     float RayLen = max(tEnd - tStart, 0.0f);
@@ -495,11 +488,10 @@ void IntegrateRay(
         return;
     }
     
-    // Unreal단위: cm 
-    // 현재 Volume의 100cm당 1 Sampling 등분을 하고,
-    // 24 ~ MaxSteps으로 Clamp해서 Step 수를 정한다.
-    // TODO: 지금은 Linear한 샘플링 방법이서 추후 변경 예정
-    
+    /*
+     * 지금 당장은 [1,24] step수로 제한
+     * 추후 step 수, step 길이를 조정할 예정 
+     */
     const float DesiredStepCm = 100.0f;
     int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm); 
     
@@ -511,16 +503,15 @@ void IntegrateRay(
     
     // 밴딩 완화 
     float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
-    float T = tStart + Jitter;
+    float T = tStart;// + Jitter;
     
     //float T = tStart;
     
     float Transmittance = 1.0f; // SceneColor를 얼마나 남길지 비율
-    float3 Scattering = 0.0f;   // 연기 색
+    float3 InScattering = 0.0f;   // 연기 색
   
     // self-shadow Debyg용 
-    float MaxShadow = 0.0f; 
-    float3 IncidentLight = SelfShadowLightColor * SelfShadowLightIntensity;
+    float MaxShadow = 0.0f;
     
     //Phase Function Params
     float CosTheta = clamp(dot(SelfShadowLightDirection, -RayDir) , -1.0f, 1.0f);
@@ -537,26 +528,29 @@ void IntegrateRay(
         float3 P = RayOrigin + RayDir * T; 
         
          float Density = SampleDensity(P);
-         if (Density > 1e-6)
+         if ( Density > 1e-6)
          {
              float StepMeters = StepSize * 0.01f;
-             // bear lambert: out-scattering
+             
              float SigmaA = Density * max(AbsorptionScale, 0.0f);
              float SigmaS = Density * max(ScatteringScale, 0.0f);
              float SigmaT = max(SigmaA + SigmaS, 1e-6);
+             
+             // beer-lambert law: 흡수 + Out Scattering 이후 남은 빛의 비율
              float StepT = exp(-SigmaT * StepMeters); 
              
              // in-scattering
              float ScatteringRatio = SigmaS / SigmaT;
-             float LightT = ComputeLightTransmittance(P);
+             float LightTransmittance = ComputeLightTransmittance(P);
              
-             float3 StepScatter = ScatteringRatio * (1.0f - StepT) * LightT * Phase * IncidentLight;  
-             Scattering += Transmittance * StepScatter;
+             float3 StepInScatter = SelfShadowLightIntensity * (1.0f - StepT) * ScatteringRatio *  LightTransmittance * Phase;
+            
+             InScattering += Transmittance * StepInScatter;
              Transmittance *= StepT;
              
              // Debug 정보
-             float Shadow = 1.0f - LightT;
-             MaxShadow = max(MaxShadow, Shadow);
+             float SelfShadow = 1.0f - LightTransmittance;
+             MaxShadow = max(MaxShadow, SelfShadow);
              
              if (Transmittance < 0.01f)
              {
@@ -566,10 +560,10 @@ void IntegrateRay(
         T += StepSize;
     }
     
-    OutTransmittance = saturate(Transmittance);
-    OutScattering = max(Scattering, 0.0f);
+    TransmittanceRef = saturate(Transmittance);
+    ScatteringRef = max(InScattering, 0.0f);
 
-    OutDebugShadow = saturate(MaxShadow);
+    DebugShadowRef = saturate(MaxShadow);
 }
 
 
@@ -622,19 +616,22 @@ void MainPS(
   
 
     float2 ViewportUV = GetOutputViewportUV(SvPosition);
+    float2 NDC = ViewportUVToNDC(ViewportUV);
+    
     float2 SceneColorUV = GetSceneColorUV(ViewportUV);
     float2 SceneDepthUV = GetSceneDepthUV(ViewportUV);
     float4 SceneColor = SceneColorTexture.Sample(SceneColorSampler, SceneColorUV);
     
     float3 RayOrigin = CameraPosition;
-    float3 RayDir = ReconstructWorldDir(ViewportUV);
-    float SceneDepth = GetLinearSceneDepth(SceneDepthUV, ViewportUV);
+    float3 RayDir = ReconstructWorldDir(NDC);
+    float SceneDepth = GetLinearSceneDepth(SceneDepthUV, NDC);
 
     float3 BoxMin = SimulationCenter - SimulationExtents;
     float3 BoxMax = SimulationCenter + SimulationExtents; 
     
     float tEntry, tExit;
     
+    // 안개 구역에 도달해야지 Render
     if(!RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMax, tEntry, tExit))
     {
         OutColor = SceneColor;
