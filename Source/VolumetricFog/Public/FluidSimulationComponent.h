@@ -247,7 +247,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
 	FLinearColor SelfShadowLightColor = FLinearColor::White;
 	
-	[[depricated]]
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
 	float SelfShadowLightIntensity = 1.0f;
 	

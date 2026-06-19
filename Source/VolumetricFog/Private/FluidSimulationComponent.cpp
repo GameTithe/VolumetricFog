@@ -13,6 +13,7 @@
 #include "Curves/CurveFloat.h"
 #include "RHIBreadcrumbs.h"
 #include "Stats/StatsHierarchical.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 #include "EngineUtils.h"
 #include "TextureResource.h"
 #include "Components/LightComponent.h"
@@ -20,6 +21,8 @@
 #include "Components/PrimitiveComponent.h" 
 #include "Engine/VolumeTexture.h"
 #include "DrawDebugHelpers.h"
+
+DECLARE_GPU_STAT_NAMED(VFF_FluidSimulation, TEXT("VFF_FluidSimulation"));
 
 // ======== Fluid Resource ========
 void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
@@ -696,6 +699,8 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 												  int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
 {
 	check(IsInRenderingThread());
+	SCOPED_GPU_STAT(RHICmdList, VFF_FluidSimulation);
+	SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidSimulation, TEXT("VFF_FluidSimulation"));
   
 	const int32 Resolution = InFluidResources->Resolution;
 	const int32 VelWriteIdx = 1 - InVelIndex;
@@ -728,7 +733,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
   
 	// Step 1: Advect Velocity
 	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectVelocity");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectVelocity");
 
 		int32 NextVelIdx = 1 - CurVelIdx;
   
@@ -822,9 +827,9 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	}
 	// Step 4: Force
 	{
-		SCOPED_DRAW_EVENTF(RHICmdList, FluidInteractionForce, TEXT("Fluid.InteractionForce") );
+		SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidInteractionForce, TEXT("VFF_Fluid.InteractionForce") );
 		
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.Force");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Force");
 
 		int32 NextVelIdx = 1 - CurVelIdx;
 		int32 NextDenIdx = 1 - CurDenIdx;
@@ -871,7 +876,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	
 	// Step 5: Divergence
 	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.Divergence");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Divergence");
 
 		ToSRV(InFluidResources->Velocity[CurVelIdx]);
 		ToUAV(InFluidResources->Divergence);
@@ -922,7 +927,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
  	
 	// Step 7: Gradient Subtract — velocity
 	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.GradientSubtract");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.GradientSubtract");
 
 		int32 NextVelIdx = 1 - CurVelIdx;
 		ToSRV(InFluidResources->Velocity[CurVelIdx]);
@@ -981,7 +986,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	//}
 	// Step 9: Advect Density
 	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.AdvectDensity");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectDensity");
 		int32 NextDenIdx = 1 - CurDenIdx;
 		ToSRV(InFluidResources->Velocity[CurVelIdx]);
 		ToSRV(InFluidResources->Density[CurDenIdx]);
@@ -1003,7 +1008,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 	// Step 10: Density Maintenance pass
 	if (bInEnableDensityMaintenance && InBaseDensityNoiseTexture)
 	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "Fluid.DensityMaintenance");
+		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.DensityMaintenance");
 	 
 		int32 NextDenIdx = 1 - CurDenIdx; 	
 		ToSRV(InFluidResources->Density[CurDenIdx]);

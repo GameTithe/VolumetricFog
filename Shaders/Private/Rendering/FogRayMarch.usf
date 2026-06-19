@@ -482,9 +482,9 @@ void IntegrateRay(
     
     if (RayLen <= 1e-6)
     {
-        OutTransmittance = 1.0f;
-        OutScattering = 0.0f;
-        OutDebugShadow = 0.0f;
+        TransmittanceRef = 1.0f;
+        ScatteringRef = 0.0f;
+        DebugShadowRef = 0.0f;
         return;
     }
     
@@ -551,7 +551,7 @@ void IntegrateRay(
              // Debug 정보
              float SelfShadow = 1.0f - LightTransmittance;
              MaxShadow = max(MaxShadow, SelfShadow);
-             
+                
              if (Transmittance < 0.01f)
              {
                  break;
@@ -648,9 +648,9 @@ void MainPS(
     }
 
     float Transmittance;
-    float3 Scattering;
+    float3 InScattering;
     float DebugShadow;
-    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, Scattering, DebugShadow);
+    IntegrateRay(RayOrigin, RayDir, tStart, tEnd, SvPosition.xy, Transmittance, InScattering, DebugShadow);
     
     // Shadow Debug 모드
     if (FogDebugMode == 2)
@@ -660,8 +660,8 @@ void MainPS(
         return;
     }
     
-   // float3 FinalColor = SceneColor.rgb * Transmittance + Scattering;
-    float3 FinalColor = SceneColor.rgb * Transmittance + FogColor * Scattering;
+   // float3 FinalColor = SceneColor.rgb * Transmittance + InScattering;
+    float3 FinalColor = SceneColor.rgb * Transmittance + FogColor * InScattering;
 
     OutColor = float4(FinalColor, SceneColor.a);     
 

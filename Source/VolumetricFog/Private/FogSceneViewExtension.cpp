@@ -11,8 +11,8 @@
 IMPLEMENT_GLOBAL_SHADER(FFogFullscreenPS, "/VolumetricFog/Rendering/FogFullscreen.usf", "MainPS", SF_Pixel);
 IMPLEMENT_GLOBAL_SHADER(FFogRayMarchingPS, "/VolumetricFog/Rendering/FogRayMarch.usf", "MainPS", SF_Pixel);
 
-DECLARE_GPU_STAT_NAMED(FogRayMarch, TEXT("FogRayMarch"));
-DECLARE_GPU_STAT_NAMED(FogRayMarchCopy, TEXT("FogRayMarchCopy"));
+DECLARE_GPU_STAT_NAMED(VFF_FogRayMarch, TEXT("VFF_FogRayMarch"));
+DECLARE_GPU_STAT_NAMED(VFF_FogRayMarchCopy, TEXT("VFF_FogRayMarchCopy"));
 
 FFogSceneViewExtension::FFogSceneViewExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {	
@@ -34,13 +34,13 @@ FFogSceneViewExtension::~FFogSceneViewExtension()
 
 void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FFogSceneViewExtension_RenderFog_RenderThread);
+	TRACE_CPUPROFILER_EVENT_SCOPE(VFF_FFogSceneViewExtension_RenderFog_RenderThread);
 
 	const FFluidFogRenderState& State = RenderState;
 	
 	if (!State.bEnable || !State.DensityTexture || !DensityPooledRT || !VolumeNoisePooledRT)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FFogSceneViewExtension_Need_Resource);
+		TRACE_CPUPROFILER_EVENT_SCOPE(VFF_FFogSceneViewExtension_Need_Resource);
 		return;
 	}
 	
@@ -158,13 +158,13 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	TShaderMapRef<FFogRayMarchingPS> PS(GetGlobalShaderMap(View.GetFeatureLevel()));
 	
 	{ 
-		RDG_EVENT_SCOPE_STAT(GraphBuilder, FogRayMarch, "FogRayMarch");
-		RDG_GPU_STAT_SCOPE(GraphBuilder, FogRayMarch);
+		RDG_EVENT_SCOPE_STAT(GraphBuilder, VFF_FogRayMarch, "VFF_FogRayMarch");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, VFF_FogRayMarch);
 		
 		FPixelShaderUtils::AddFullscreenPass(
 				 GraphBuilder,
 				 GetGlobalShaderMap(View.GetFeatureLevel()),
-				 RDG_EVENT_NAME("FogRayMarch"),
+					 RDG_EVENT_NAME("VFF_FogRayMarch"),
 				 PS, Params,
 			FogOutput.ViewRect);
 		
@@ -180,8 +180,8 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 		InParameters.ViewportRect.Height(), 1);
 	
 	{ 
-		RDG_EVENT_SCOPE_STAT(GraphBuilder, FogRayMarchCopy, "FogRayMarchCopy");
-		RDG_GPU_STAT_SCOPE(GraphBuilder, FogRayMarchCopy);
+		RDG_EVENT_SCOPE_STAT(GraphBuilder, VFF_FogRayMarchCopy, "VFF_FogRayMarchCopy");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, VFF_FogRayMarchCopy);
 		AddCopyTexturePass(GraphBuilder, FogOutput.Texture,		SceneColor, CopyInfo);
 	}
 
