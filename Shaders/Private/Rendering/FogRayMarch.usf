@@ -492,7 +492,7 @@ void IntegrateRay(
     int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm); 
     
     int MaxSteps = max(NumSteps, 1);
-    int MinSteps = min(24, MaxSteps);
+    int MinSteps = min(12, MaxSteps);
     
     int Steps = clamp(AdaptiveSteps, MinSteps, MaxSteps);
     float StepSize = RayLen / max((float) Steps, 1.0f);

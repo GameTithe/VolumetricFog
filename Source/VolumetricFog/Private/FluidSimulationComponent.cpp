@@ -200,11 +200,6 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	// 게임스레드에서 설정해둔 Fog관련 값들 캡처
 	auto Resources = FluidResources;
 	float DT = DeltaTime;
-	FVector2f FP = FVector2f(ForcePosition);
-	FVector2f FD = FVector2f(ForceDirection);
-	float FR = ForceRadius;
-	float FS = ForceStrength;
-	float DA = DensityAmount;
 	float Diss = Dissipation;
 	float Vortiy = VorticityStrengthParam;
 	float Visc = Viscosity;
@@ -242,7 +237,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
 	[ Resources, Ext, Snapshot, 
-		DT, FP, FD, FR, FS, DA, Diss, 
+		DT, Diss, 
         CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
         bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
         InteractionForceSources,
@@ -268,7 +263,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		// 시뮬레이션
 		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
-					   FP, FD, FR, FS, DA, Diss, 
+					   Diss, 
                        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
                        Vortiy, Visc, PresItr,
                        bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
@@ -580,7 +575,7 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	
 	
 	//Dir Of Directional Light 	
-	FVector FinalToLight = SelfShadowLightDirection.GetSafeNormal(); 
+	FVector FinalToLight = FogLightIntensity.GetSafeNormal(); 
 	if (bUseWorldDirectionalLight)
 	{
 		FVector DirSampleToLight;
@@ -682,8 +677,8 @@ void UFluidSimulationComponent::ReleaseHeightCurveFromFogExtension()
 
 void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHICmdList,
 												  TSharedPtr<FFluidResources, ESPMode::ThreadSafe> InFluidResources,
-												  float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition,
-												  FVector2f InForceDirection, float InForceRadius, float InForceStrength, float InDensityAmount, float InDissipation, 
+												  float DeltaTime, int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,  
+												  float InDissipation, 
 												  FTextureRHIRef InCurlNoiseTexture, float InSimulationTime, float InCurlSimulationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength, float InCurlDensityMaskScale,
                                                   float InVorticityStrength, float InVisc, int32 InPressureIterations,
                                                   bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture,float InBaseDensityTarget,float InBaseDensityRecoverySpeed,float InBaseDensityDeadbandRatio,float InBaseDensityNoiseRepeat,
@@ -835,12 +830,7 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 		Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
 		Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
 		Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
-		Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
-		Params.ForcePosition  = InForcePosition;
-		Params.ForceDirection = InForceDirection;
-		Params.ForceRadius    = InForceRadius;
-		Params.ForceStrength  = InForceStrength;
-		Params.DensityAmount  = InDensityAmount;
+		Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx]; 
 		Params.DeltaTime      = DeltaTime;
 		Params.Dissipation    = InDissipation;
 		Params.CurlNoiseTexture = InCurlNoiseTexture;

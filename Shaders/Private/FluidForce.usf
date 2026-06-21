@@ -11,11 +11,6 @@ SamplerState CurlNoiseSampler;
 
 float Time;
 
-float2 ForcePosition;   // UV Pos
-float2 ForceDirection;
-float ForceRadius;
-float ForceStrength;
-float DensityAmount;
 float DeltaTime;
 float Dissipation;  //밀도 감쇠
 
@@ -48,18 +43,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     
     float2 Vel = VelocityInput[DTid.xy];
     float Density = DensityInput[DTid.xy];
-
-    // old school
-    //float Dist = length(UV - ForcePosition);
-    //float Influence = exp(-(Dist * Dist) / (2.0 * ForceRadius * ForceRadius));
-    //
-    //// 이번 프레임에 Density를 계산( Density 가 존재하는 곳에만 turbulence(난류) 적용 예정
-    //float AddedDensity = DensityAmount * Influence * DeltaTime;
-    //float NewDensity = (Density + AddedDensity) * Dissipation;
-    //
-    //// 기존 외력
-    //Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
- 
+    
     //new school 
     uint SourceCount = min(InteractionForceSourceCount, (uint)MAX_FLUID_INTERACTION_FORCE_SOURCE);
     for (uint SourceIndex = 0; SourceIndex < SourceCount; ++SourceIndex)
@@ -88,24 +72,10 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     float2 CurlFlow = CurlNoiseTexture.SampleLevel(CurlNoiseSampler, NoiseUV, 0).rg * 2.0f - 1.0f;
     
     float DensityMask = saturate(NewDensity * CurlDensityMaskScale);
-    //Vel += CurlFlow * CurlVelocityStrength * DensityMask * DeltaTime;
-    
-    // TODO: 경계부분에서 Velocity가 과도하게 쌓이지 않도록 처리
+    //Vel += CurlFlow * CurlVelocityStrength * DensityMask * DeltaTime; 
     
     //Vel += CurlFlow * CurlVelocityStrength * DeltaTime;
     
     VelocityOutput[DTid.xy] = Vel;
-    DensityOutput[DTid.xy] = NewDensity;
-    
-    // Velocity에 힘 추가
-    //Vel += ForceDirection * ForceStrength * Influence * DeltaTime;
-    // 
-    //// Density에 소스 추가
-    //Density += DensityAmount * Influence * DeltaTime;
-    //
-    //// Dissipation 추가
-    //Density *= Dissipation;
-    //
-    //VelocityOutput[DTid.xy] = Vel;
-    //DensityOutput[DTid.xy] = Density; 
+    DensityOutput[DTid.xy] = NewDensity; 
 }
