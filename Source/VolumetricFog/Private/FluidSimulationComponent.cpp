@@ -572,15 +572,7 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 		State.FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
 		State.FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
 	}
-	
-	// Density Texture의 인덱스를 여기서는 알 수 없으니 따로 채워줘야 함
-	
-	// Volume Noise Texture 
-	if (VolumeNoiseTexture && VolumeNoiseTexture->GetResource())
-	{
-		State.VolumeNoiseTexture = VolumeNoiseTexture->GetResource()->TextureRHI;
-	}
-	
+	 
 	if (ShapeNoiseTexture && ShapeNoiseTexture->GetResource())
 	{
 		State.ShapeNoiseTexture = ShapeNoiseTexture->GetResource()->TextureRHI;

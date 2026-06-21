@@ -14,11 +14,7 @@ Texture2D HeightCurveTexture;
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
 SamplerState HeightCurveSampler;
-
-//Modeling
-Texture3D VolumeNoiseTexture;
-SamplerState VolumeNoiseSampler;
-
+ 
 Texture2D ShapeNoiseTexture;
 SamplerState ShapeNoiseSampler;
 

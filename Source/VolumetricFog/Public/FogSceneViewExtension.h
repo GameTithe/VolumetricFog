@@ -29,9 +29,7 @@ public:
 	
 		// Modeling Noise Textures
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ShapeNoiseTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, ShapeNoiseSampler)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture3D, VolumeNoiseTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, VolumeNoiseSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, ShapeNoiseSampler) 
 	
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneDepthViewport)
@@ -149,8 +147,7 @@ struct FFluidFogRenderState
 	// Phase Function
 	float GOfHG = 0.0f;
 	
-	FTextureRHIRef DensityTexture;
-	FTextureRHIRef VolumeNoiseTexture;
+	FTextureRHIRef DensityTexture; 
 	FTextureRHIRef ShapeNoiseTexture;
 	
 };
@@ -178,8 +175,7 @@ private:
 	void RenderFog_RenderThread(FPostOpaqueRenderParameters& InParameters);
 
 	FFluidFogRenderState RenderState;
-	TRefCountPtr<IPooledRenderTarget> DensityPooledRT; 
-	TRefCountPtr<IPooledRenderTarget> VolumeNoisePooledRT;
+	TRefCountPtr<IPooledRenderTarget> DensityPooledRT;  
 	TRefCountPtr<IPooledRenderTarget> ShapeNoisePooledRT;
 	
 	FDelegateHandle PostOpaqueDelegateHandle; 

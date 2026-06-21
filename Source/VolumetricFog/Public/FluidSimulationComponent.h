@@ -13,8 +13,7 @@
 class UCurveFloat;
 class ADirectionalLight;
 class ULightComponent;
-class UPrimitiveComponent;
-class UVolumeTexture;
+class UPrimitiveComponent; 
 
 // 시뮬레이션에 필요한 RTs
 struct FFluidResources
@@ -137,10 +136,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction", meta = (ClampMin = "1.0"))
 	float ActorInteractionForceMultiplier = 5.0f;
 	
-	//Fog Modeling 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
-	TObjectPtr<UVolumeTexture> VolumeNoiseTexture; 
-	
+	//Fog Modeling  
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
 	TObjectPtr<UTexture2D> ShapeNoiseTexture;
 	
