@@ -140,12 +140,6 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DensityOutput)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 
-		SHADER_PARAMETER(FVector2f, ForcePosition)
-		SHADER_PARAMETER(FVector2f, ForceDirection)
-
-		SHADER_PARAMETER(float, ForceRadius)
-		SHADER_PARAMETER(float, ForceStrength)
-		SHADER_PARAMETER(float, DensityAmount)
 		SHADER_PARAMETER(float, DeltaTime)
 		SHADER_PARAMETER(float, Dissipation)
 

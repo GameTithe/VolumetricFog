@@ -13,8 +13,7 @@
 class UCurveFloat;
 class ADirectionalLight;
 class ULightComponent;
-class UPrimitiveComponent;
-class UVolumeTexture;
+class UPrimitiveComponent; 
 
 class FRDGBuilder;
 
@@ -107,37 +106,73 @@ public:
 	EFluidFogDebugMode FogDebugMode = EFluidFogDebugMode::Sim_3D;
 	
 	// ======== Editer Setting ========
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "16", ClampMax = "2048"))
-	int32 SimResolution = 256;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Force")
-	FVector2D ForcePosition = FVector2D(0.5, 0.8);
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Force")
-	FVector2D ForceDirection = FVector2D(0.0f, -1.0f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Force")
-	float ForceRadius = 0.05f;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Force")
-	float ForceStrength = 100.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
+	bool bEnableFog = true;
+	 
+	/** Simulation Params */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Simulation", meta = (ClampMin = "16", ClampMax = "2048"))
+	int32 SimResolution = 1024;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Force")
-	float DensityAmount = 50.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.9", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Simulation", meta = (ClampMin = "0.9", ClampMax = "1.0"))
 	float Dissipation = 0.995f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Density", meta =
+	(ClampMin = "0.0"))
+	float FogDensityMultiplier = 10.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AbsorptionScale = 0.1f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ScatteringScale = 0.5f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering")
+	FLinearColor FogColor = FLinearColor(0.8f, 0.85f, 0.9f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering", meta =
+	(ClampMin = "8", ClampMax = "128"))
+	int32 NumSteps = 64;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering")
+	float MaxRayDistance = 5000.f;
+ 
+	/** Fog Rendering using Directional Light */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering")
+	bool bUseWorldDirectionalLight = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering", meta = (EditCondition = "bUseWorldDirectionalLight"))
+	TObjectPtr<ADirectionalLight> DirectionalLightActor = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering", meta = (EditCondition = "bUseWorldDirectionalLight"))
+	bool bUseDirectionalLightColor = false;
+	
+	// Shadowing
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow")
+	FVector FogLightIntensity = FVector(0.4f, 0.2f, 1.0f);
+	
+	[[depricated]]
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow")
+	FLinearColor SelfShadowLightColor = FLinearColor::White;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow")
+	float SelfShadowLightIntensity = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow", meta = (ClampMin = "0.0"))
+	float SelfShadowDensityScale = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 SelfShadowStepCount = 6;
+	
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Rendering|SelfShadow", meta = (ClampMin = "0.0", ClampMax = "2000.0"))
+	float SelfShadowMaxDistance = 2000.0f;
+	
+	/** Vorticity has not been applied yet */
 	float VorticityStrengthParam = 5.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "1", ClampMax = "100"))
 	int32 PressureIterations = 20;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid", meta = (ClampMin = "0.0"))
 	float Viscosity = 0.001f;
 	
-	// Interaction
+	/** Interaction Params */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction")
 	bool bEnableActorInteraction = true;
 	
@@ -147,80 +182,52 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Interaction", meta = (ClampMin = "1.0"))
 	float ActorInteractionForceMultiplier = 5.0f;
 	
-	//Fog Modeling 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
-	TObjectPtr<UVolumeTexture> VolumeNoiseTexture; 
-	
+	//Fog Modeling  
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Modeling")
 	TObjectPtr<UTexture2D> ShapeNoiseTexture;
 	
-	// Fog Rendering
-	// Directional Light
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight")
-	bool bUseWorldDirectionalLight = true;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight", meta = (EditCondition = "bUseWorldDirectionalLight"))
-	TObjectPtr<ADirectionalLight> DirectionalLightActor = nullptr;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|DirectionalLight", meta = (EditCondition = "bUseWorldDirectionalLight"))
-	bool bUseDirectionalLightColor = false;
-	
-	// ======== Fog Rendering ========
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	bool bEnableFog = true;
-	 
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	float HeightFalloff = 200.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
-	(ClampMin = "0.0"))
-	float FogDensityMultiplier = 2.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float AbsorptionScale = 0.1f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float ScatteringScale = 0.5f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	FLinearColor FogColor = FLinearColor(0.8f, 0.85f, 0.9f, 1.f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog", meta =
-	(ClampMin = "8", ClampMax = "128"))
-	int32 NumSteps = 64;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	float MaxRayDistance = 5000.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog")
-	float SimulationWorldSize = 5000.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance")
+	/** Maintenance Params*/ 
 	bool bEnableDensityMaintenance = true;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance")
 	TObjectPtr<UTexture2D> BaseDensityNoiseTexture = nullptr;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
-	float BaseDensityTarget = 300.0f;
+	float BaseDensityTarget = 1000.0;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
-	float BaseDensityRecoverySpeed = 0.05f;
+	float BaseDensityRecoverySpeed = 0.4f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
-	float BaseDensityDeadbandRatio = 0.5f;
+	float BaseDensityDeadbandRatio = 0.8f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Maintenance", meta = (ClampMin = "0.0"))
-	float BaseDensityNoiseRepeat = 3.0f;
+	float BaseDensityNoiseRepeat = 2.0f;
 	
-	
+	/** Fog Height Params*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
+	EFluidHeightAttenuationMode HeightAttenuationMode = EFluidHeightAttenuationMode::CurveAttenuation;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
 	TObjectPtr<UCurveFloat> HeightAttenuationCurve = nullptr;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (ClampMin = "32", ClampMax = "1024", EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::CurveAttenuation"))
 	int32 HeightCurveLUTResolution = 256;
  
+	/** HeightFadeStartRatio 부터 감쇠적용 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::AdaptiveNormalCurveAttenuationized"))
+	float HeightFadeStartRatio = 0.5f;
+ 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::AdaptiveNormalCurveAttenuationized"))
+	float HeightFadeStrength = 1.0f;
+	
+	/** Fog의 바닥부터 바로 감쇠 적용 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height", meta = (EditCondition = "HeightAttenuationMode == EFluidHeightAttenuationMode::LegacyExp"))
+	float HeightFalloff = 200.f;
+	
+	UPROPERTY()
+	bool bHeightCurveDirty = false;
+	
 	// ======== Curl Noise ========
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl")
 	TObjectPtr<UTexture2D> CurlNoiseTexture;
@@ -236,38 +243,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Curl", meta = (ClampMin = "0.0"))
 	float CurlDensityMaskScale = 0.15f;
-
-	UPROPERTY()
-	bool bHeightCurveDirty = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
-	EFluidHeightAttenuationMode HeightAttenuationMode = EFluidHeightAttenuationMode::CurveAttenuation;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
-	float HeightFadeStartRatio = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Height")
-	float HeightFadeStrength = 1.0f;
-	
-	// Shadow 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
-	FVector SelfShadowLightDirection = FVector(0.4f, 0.2f, 1.0f);
-	
-	[[depricated]]
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
-	FLinearColor SelfShadowLightColor = FLinearColor::White;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow")
-	float SelfShadowLightIntensity = 1.0f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0"))
-	float SelfShadowDensityScale = 1.0f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "1", ClampMax = "64"))
-	int32 SelfShadowStepCount = 6;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|SelfShadow", meta = (ClampMin = "0.0", ClampMax = "2000.0"))
-	float SelfShadowMaxDistance = 2000.0f;
 
 	// Phase Function
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Phase", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
@@ -324,11 +299,6 @@ private:
 		float DeltaTime,
 	 	int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
 	 	// 시뮬레이션 파라미터들
-	 	FVector2f InForcePosition,
-	 	FVector2f InForceDirection,
-	 	float InForceRadius,
-	 	float InForceStrength,
-	 	float InDensityAmount,
 	 	float InDissipation,
 		FTextureRHIRef InCurlNoiseTexture,
 		float InSimulationTime,
@@ -358,11 +328,6 @@ private:
 	float DeltaTime,
 	 int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
 	 // 시뮬레이션 파라미터들
-	 FVector2f InForcePosition,
-	 FVector2f InForceDirection,
-	 float InForceRadius,
-	 float InForceStrength,
-	 float InDensityAmount,
 	 float InDissipation,
 	FTextureRHIRef InCurlNoiseTexture,
 	float InSimulationTime,
@@ -392,11 +357,6 @@ private:
 	float DeltaTime,
 	 int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
 	 // 시뮬레이션 파라미터들
-	 FVector2f InForcePosition,
-	 FVector2f InForceDirection,
-	 float InForceRadius,
-	 float InForceStrength,
-	 float InDensityAmount,
 	 float InDissipation,
 	FTextureRHIRef InCurlNoiseTexture,
 	float InSimulationTime,

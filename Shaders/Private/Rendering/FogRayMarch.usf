@@ -14,11 +14,7 @@ Texture2D HeightCurveTexture;
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
 SamplerState HeightCurveSampler;
-
-//Modeling
-Texture3D VolumeNoiseTexture;
-SamplerState VolumeNoiseSampler;
-
+ 
 Texture2D ShapeNoiseTexture;
 SamplerState ShapeNoiseSampler;
 
@@ -496,7 +492,7 @@ void IntegrateRay(
     int AdaptiveSteps = (int) ceil(RayLen / DesiredStepCm); 
     
     int MaxSteps = max(NumSteps, 1);
-    int MinSteps = min(24, MaxSteps);
+    int MinSteps = min(12, MaxSteps);
     
     int Steps = clamp(AdaptiveSteps, MinSteps, MaxSteps);
     float StepSize = RayLen / max((float) Steps, 1.0f);
