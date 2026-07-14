@@ -17,8 +17,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidAdvectVelocityCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-			SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-			SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 			SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 			SHADER_PARAMETER(float, DeltaTime)
 			SHADER_PARAMETER(FVector2f, InvResolution)
@@ -38,9 +38,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidAdvectCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DensityOutput)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
 		SHADER_PARAMETER(float, DeltaTime)
 		SHADER_PARAMETER(FVector2f, InvResolution)
@@ -60,10 +60,10 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidDensityMaintenanceCS, FGlobalShader);
 	
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DensityOutput)
 		
-		SHADER_PARAMETER_TEXTURE(Texture2D,NoiseTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D,NoiseTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, NoiseSampler)
 		
 		SHADER_PARAMETER(float, DeltaTime)
@@ -91,9 +91,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidDiffuseCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float>, InputTexture)
-		SHADER_PARAMETER_SRV(Texture2D<float>, PrevTexture)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, OutputTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InputTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PrevTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputTexture)
 		SHADER_PARAMETER(float, Alpha)
 		SHADER_PARAMETER(float, InvBeta)
 		SHADER_PARAMETER(FIntPoint, Resolution)
@@ -113,9 +113,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidDiffuseVelocityCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, InputTexture)
-		SHADER_PARAMETER_SRV(Texture2D<float2>, PrevTexture)
-		SHADER_PARAMETER_UAV(RWTexture2D<float2>, OutputTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, InputTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PrevTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputTexture)
 		SHADER_PARAMETER(float, Alpha)
 		SHADER_PARAMETER(float, InvBeta)
 		SHADER_PARAMETER(FIntPoint, Resolution)
@@ -135,10 +135,10 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidForceCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float>, DensityInput)
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, DensityOutput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DensityInput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DensityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 
 		SHADER_PARAMETER(FVector2f, ForcePosition)
 		SHADER_PARAMETER(FVector2f, ForceDirection)
@@ -150,7 +150,7 @@ public:
 		SHADER_PARAMETER(float, Dissipation)
 
 		//Curl Noise
-		SHADER_PARAMETER_TEXTURE(Texture2D, CurlNoiseTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
 		SHADER_PARAMETER(float, Time)
 		SHADER_PARAMETER(float, CurlSimulationTiling)
@@ -181,8 +181,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidDivergenceCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, DivergenceOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DivergenceOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
 	END_SHADER_PARAMETER_STRUCT()
@@ -200,9 +200,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidGradientSubtractCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_SRV(Texture2D<float>, PressureInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PressureInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
 	END_SHADER_PARAMETER_STRUCT()
@@ -220,8 +220,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidVorticityCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float>, VorticityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, VorticityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, HalfInvDx)
 	END_SHADER_PARAMETER_STRUCT()
@@ -239,9 +239,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FFluidVorticityForceCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(Texture2D<float2>, VelocityInput)
-		SHADER_PARAMETER_SRV(Texture2D<float>, VorticityInput)
-		SHADER_PARAMETER_UAV(RWTexture2D<float2>, VelocityOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VelocityInput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, VorticityInput)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 		SHADER_PARAMETER(FIntPoint, Resolution)
 		SHADER_PARAMETER(float, VorticityStrength)
 		SHADER_PARAMETER(float, DeltaTime)

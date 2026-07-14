@@ -21,6 +21,8 @@
 #include "Components/PrimitiveComponent.h" 
 #include "Engine/VolumeTexture.h"
 #include "DrawDebugHelpers.h"
+#include "SystemTextures.h"
+
 
 DECLARE_GPU_STAT_NAMED(VFF_FluidSimulation, TEXT("VFF_FluidSimulation"));
 
@@ -40,7 +42,7 @@ void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
 
 		return RHICreateTexture(Desc);
 	};
-
+	
 	Velocity[0] = CreateUAVTexForCS(TEXT("FluidVelocityA"), PF_G32R32F);
 	Velocity[1] = CreateUAVTexForCS(TEXT("FluidVelocityB"), PF_G32R32F);
 
@@ -54,6 +56,23 @@ void FFluidResources::Init(int32 Res, FRHICommandListImmediate& RHICmdList)
 	Vorticity = CreateUAVTexForCS(TEXT("FluidVorticity"), PF_R32_FLOAT);
 
 	TempVelocity = CreateUAVTexForCS(TEXT("FluidTempVelocity"), PF_G32R32F);
+	
+	
+	/** Create Texture Using Pooled Render Target */
+	VelocityPooledRT[0] = CreateRenderTarget(Velocity[0], TEXT("FluidVelocityA"));
+	VelocityPooledRT[1] = CreateRenderTarget(Velocity[1], TEXT("FluidVelocityB"));
+	
+	DensityPooledRT[0] = CreateRenderTarget(Density[0], TEXT("FluidDensityA"));
+	DensityPooledRT[1] = CreateRenderTarget(Density[1], TEXT("FluidDensityB"));
+
+	PressurePooledRT[0] = CreateRenderTarget(Pressure[0], TEXT("FluidPressureA"));
+	PressurePooledRT[1] = CreateRenderTarget(Pressure[1], TEXT("FluidPressureB"));
+
+	DivergencePooledRT = CreateRenderTarget(Divergence, TEXT("FluidDivergence"));
+	VorticityPooledRT = CreateRenderTarget(Vorticity, TEXT("FluidVorticity"));
+	TempVelocityPooledRT = CreateRenderTarget(TempVelocity, TEXT("FluidTempVelocity"));
+	
+	
 	// SRV/UAV 캐싱
 	VelocitySRV[0] = RHICmdList.CreateShaderResourceView(Velocity[0], 0);
 	VelocitySRV[1] = RHICmdList.CreateShaderResourceView(Velocity[1], 0);
@@ -266,7 +285,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		int32 OutVelIdx = InVelIdx, OutDenIdx = InDenIdx, OutPrsIdx = InPressIdx;
          
 		// 시뮬레이션
-		UFluidSimulationComponent::ExecuteSimulation(RHICmdList, Resources,
+		UFluidSimulationComponent::ExecuteSimulationRDG(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
 					   FP, FD, FR, FS, DA, Diss, 
                        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
@@ -698,356 +717,818 @@ void UFluidSimulationComponent::ExecuteSimulation(FRHICommandListImmediate& RHIC
 												  const TArray<FFluidInteractionForceSource>& InInteractionForceSources,
 												  int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex)
 {
-	check(IsInRenderingThread());
-	SCOPED_GPU_STAT(RHICmdList, VFF_FluidSimulation);
-	SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidSimulation, TEXT("VFF_FluidSimulation"));
-  
-	const int32 Resolution = InFluidResources->Resolution;
-	const int32 VelWriteIdx = 1 - InVelIndex;
-	const int32 DenWriteIdx = 1 - InDenIndex;
-	const int32 PresWriteIdx = 1 - InPresIndex;
-      
-	const float Dx = 1.0f / (float)Resolution;
-	const float HalfInvDx = 0.5f * (float)Resolution;
-	const FVector2f InvResolution(Dx, Dx);
- 
-	const FIntPoint ResolutionPt(Resolution, Resolution);
-	const FIntVector GroupCount(
-		FMath::DivideAndRoundUp(Resolution, 8), // 8: Num of Computer Shader Threads 
-		FMath::DivideAndRoundUp(Resolution, 8), // 8: Num of Computer Shader Threads 
-		1
-	);
-  
-	auto ToSRV = [&](FRHITexture* Tex)
-	{
-		RHICmdList.Transition(FRHITransitionInfo(Tex, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
-	};
-	auto ToUAV = [&](FRHITexture* Tex)
-	{
-		RHICmdList.Transition(FRHITransitionInfo(Tex, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
-	};
- 	
-	int CurVelIdx = InVelIndex;
-	int CurDenIdx = InDenIndex;
-	int CurPresIdx = InPresIndex;
-  
-	// Step 1: Advect Velocity
-	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectVelocity");
-
-		int32 NextVelIdx = 1 - CurVelIdx;
-  
-		ToSRV(InFluidResources->Velocity[CurVelIdx]);
-		ToUAV(InFluidResources->Velocity[NextVelIdx]);
-  
-		TShaderMapRef<FFluidAdvectVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidAdvectVelocityCS::FParameters Params;
-		Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
-		Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
-		Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		Params.DeltaTime = DeltaTime;
-		Params.InvResolution  = InvResolution;
-		Params.Resolution     = ResolutionPt;
-  
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-		CurVelIdx = NextVelIdx; 
-	}
- 	 
-	//// Step2: Vorticity
-	//{
-	//	ToSRV(InFluidResources->Velocity[CurVelIdx]);
-	//	ToUAV(InFluidResources->Vorticity);
+	// check(IsInRenderingThread());
+	// SCOPED_GPU_STAT(RHICmdList, VFF_FluidSimulation);
+	// SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidSimulation, TEXT("VFF_FluidSimulation"));
+ //  
+	// const int32 Resolution = InFluidResources->Resolution;
+	// const int32 VelWriteIdx = 1 - InVelIndex;
+	// const int32 DenWriteIdx = 1 - InDenIndex;
+	// const int32 PresWriteIdx = 1 - InPresIndex;
+ //      
+	// const float Dx = 1.0f / (float)Resolution;
+	// const float HalfInvDx = 0.5f * (float)Resolution;
+	// const FVector2f InvResolution(Dx, Dx);
+ //
+	// const FIntPoint ResolutionPt(Resolution, Resolution);
+	// const FIntVector GroupCount(
+	// 	FMath::DivideAndRoundUp(Resolution, 8), // 8: Num of Computer Shader Threads 
+	// 	FMath::DivideAndRoundUp(Resolution, 8), // 8: Num of Computer Shader Threads 
+	// 	1
+	// );
+ //  
+	// auto ToSRV = [&](FRHITexture* Tex)
+	// {
+	// 	RHICmdList.Transition(FRHITransitionInfo(Tex, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
+	// };
+	// auto ToUAV = [&](FRHITexture* Tex)
+	// {
+	// 	RHICmdList.Transition(FRHITransitionInfo(Tex, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+	// };
+ // 	
+	// int CurVelIdx = InVelIndex;
+	// int CurDenIdx = InDenIndex;
+	// int CurPresIdx = InPresIndex;
+ //  
+	// // Step 1: Advect Velocity
+	// {
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectVelocity");
 	//
-	//	TShaderMapRef<FFluidVorticityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-	//	FFluidVorticityCS::FParameters Params;
-	//
-	//	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
-	//	Params.VorticityOutput = MakeUAV(InFluidResources->Vorticity);
-	//	Params.Resolution = ResolutionPt;
-	//	Params.HalfInvDx = HalfInvDx;
-	//
-	//	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-	//}
-	//
-	//// Step3: Vorticity Confinement Force
-	//{
-	//	int NextVelIdx = 1 - CurVelIdx;
-	//	ToSRV(InFluidResources->Velocity[CurVelIdx]);
-	//	ToSRV(InFluidResources->Vorticity);
-	//	ToUAV(InFluidResources->Velocity[NextVelIdx]);
-	//
-	//	TShaderMapRef<FFluidVorticityForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-	//	FFluidVorticityForceCS::FParameters Params;
-	//
-	//	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
-	//	Params.VorticityInput = MakeSRV(InFluidResources->Vorticity);
-	//	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
-	//	Params.Resolution = ResolutionPt;
-	//	Params.VorticityStrength = InVorticityStrength;
-	//	Params.DeltaTime = DeltaTime;
-	//	Params.HalfInvDx = HalfInvDx;
-	//
-	//	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-	//	CurVelIdx = NextVelIdx;
-	//}
-	if (InVisc > 0.0f)
-	{
-		// 원본 속도를 TempVelocity에 보관 (Jacobi "b" 항, 반복 내내 고정)
-		RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Velocity[CurVelIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
-		RHICmdList.Transition(FRHITransitionInfo(InFluidResources->TempVelocity, ERHIAccess::Unknown, ERHIAccess::CopyDest));
-		FRHICopyTextureInfo CopyInfo;
-		RHICmdList.CopyTexture(InFluidResources->Velocity[CurVelIdx], InFluidResources->TempVelocity, CopyInfo);
-
-		// Dx=1 이므로: a = dt * visc, Alpha = 1/a, InvBeta = 1/(4 + Alpha)
-		//const float a = DeltaTime * InVisc;
-		const float a = DeltaTime * InVisc / (Dx * Dx);
-		const float ViscAlpha = 1.0f / a;
-		const float ViscInvBeta = 1.0f / (4.0f + ViscAlpha);
-
-		for (int32 i = 0; i < 5; ++i)
-		{
-			int32 NextVelIdx = 1 - CurVelIdx;
-
-			ToSRV(InFluidResources->Velocity[CurVelIdx]);
-			ToSRV(InFluidResources->TempVelocity);
-			ToUAV(InFluidResources->Velocity[NextVelIdx]);
-
-			TShaderMapRef<FFluidDiffuseVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FFluidDiffuseVelocityCS::FParameters Params;
-			Params.InputTexture  = InFluidResources->VelocitySRV[CurVelIdx];
-			Params.PrevTexture   = InFluidResources->TempVelocitySRV;
-			Params.OutputTexture = InFluidResources->VelocityUAV[NextVelIdx];
-			Params.Alpha         = ViscAlpha;
-			Params.InvBeta       = ViscInvBeta;
-			Params.Resolution    = ResolutionPt;
-
-			FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-			CurVelIdx = NextVelIdx;
-		}
-	}
-	// Step 4: Force
-	{
-		SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidInteractionForce, TEXT("VFF_Fluid.InteractionForce") );
-		
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Force");
-
-		int32 NextVelIdx = 1 - CurVelIdx;
-		int32 NextDenIdx = 1 - CurDenIdx;
-		ToSRV(InFluidResources->Velocity[CurVelIdx]);
-		ToSRV(InFluidResources->Density[CurDenIdx]);
-		ToUAV(InFluidResources->Velocity[NextVelIdx]);
-		ToUAV(InFluidResources->Density[NextDenIdx]);
-  
-		TShaderMapRef<FFluidForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidForceCS::FParameters Params;
-		Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
-		Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
-		Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
-		Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
-		Params.ForcePosition  = InForcePosition;
-		Params.ForceDirection = InForceDirection;
-		Params.ForceRadius    = InForceRadius;
-		Params.ForceStrength  = InForceStrength;
-		Params.DensityAmount  = InDensityAmount;
-		Params.DeltaTime      = DeltaTime;
-		Params.Dissipation    = InDissipation;
-		Params.CurlNoiseTexture = InCurlNoiseTexture;
-		Params.CurlNoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
-		Params.Time = InSimulationTime;
-		Params.CurlSimulationTiling = InCurlSimulationTiling;
-		Params.CurlSimulationSpeed = InCurlSimulationSpeed;
-		Params.CurlVelocityStrength = InCurlVelocityStrength;
-		Params.CurlDensityMaskScale = InCurlDensityMaskScale;
-		//Interaction Param
-		const uint32 InteractionForceSourceCount = FMath::Min(InInteractionForceSources.Num(), MAX_FLUID_INTERACTION_FORCE_SOURCE);
-		Params.InteractionForceSourceCount = InteractionForceSourceCount;
-		for (uint32 SourceIndex = 0; SourceIndex < InteractionForceSourceCount; ++SourceIndex)
-		{
-			Params.InteractionForcePositionRadius[SourceIndex] = InInteractionForceSources[SourceIndex].PositionRadius;
-			Params.InteractionForceVectorDensity[SourceIndex] = InInteractionForceSources[SourceIndex].ForceDensity;
-		}
-		Params.InvResolution  = InvResolution;
-		Params.Resolution     = ResolutionPt;
-  
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-		CurVelIdx = NextVelIdx;
-		CurDenIdx = NextDenIdx;
-	} 
-	
-	// Step 5: Divergence
-	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Divergence");
-
-		ToSRV(InFluidResources->Velocity[CurVelIdx]);
-		ToUAV(InFluidResources->Divergence);
-  
-		TShaderMapRef<FFluidDivergenceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidDivergenceCS::FParameters Params;
-		Params.VelocityInput    = InFluidResources->VelocitySRV[CurVelIdx];
-		Params.DivergenceOutput = InFluidResources->DivergenceUAV;
-		Params.Resolution       = ResolutionPt;
-		Params.HalfInvDx        = HalfInvDx;
-  
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount); 
-	}
-  
-	// Step 6: Pressure Solve (Jacobi iteration)
-	{
-
-		{
-			RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[0], FVector4f(0, 0, 0, 0));
-			RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[1], FVector4f(0, 0, 0, 0));
-		}
-		CurPresIdx = 0;
- 	 	
-		const float Alpha = -(Dx * Dx);
-		const float InvBeta = 0.25f;
- 	 	
-		for (int32 i = 0; i < InPressureIterations; ++i)
-		{
-			int32 NextPresIdx = 1 - CurPresIdx;
-  
-			ToSRV(InFluidResources->Pressure[CurPresIdx]);
-			ToSRV(InFluidResources->Divergence);
-			ToUAV(InFluidResources->Pressure[NextPresIdx]);
-  
-			TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FFluidDiffuseCS::FParameters Params;
-			Params.InputTexture  = InFluidResources->PressureSRV[CurPresIdx];
-			Params.PrevTexture   = InFluidResources->DivergenceSRV;
-			Params.OutputTexture = InFluidResources->PressureUAV[NextPresIdx];
-			Params.Alpha         = Alpha;
-			Params.InvBeta       = InvBeta;
-			Params.Resolution    = ResolutionPt;
-  
-			FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-			CurPresIdx = NextPresIdx;
-		} 
-	}
- 	
-	// Step 7: Gradient Subtract — velocity
-	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.GradientSubtract");
-
-		int32 NextVelIdx = 1 - CurVelIdx;
-		ToSRV(InFluidResources->Velocity[CurVelIdx]);
-		ToSRV(InFluidResources->Pressure[CurPresIdx]);
-		ToUAV(InFluidResources->Velocity[NextVelIdx]);
-  
-		TShaderMapRef<FFluidGradientSubtractCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidGradientSubtractCS::FParameters Params;
-		Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
-		Params.PressureInput  = InFluidResources->PressureSRV[CurPresIdx];
-		Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
-		Params.Resolution     = ResolutionPt;
-		Params.HalfInvDx      = HalfInvDx;
-  
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-		CurVelIdx = NextVelIdx;
-	}
-
-	// Step 8 : Diffuse
-	//{
-	// 	// Divergence 텍스처를 임시 버퍼로 사용 (이 시점에서 안 쓰니까)
-	// 	// 확산 전 원본 밀도를 보관
-	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Density[CurDenIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
-	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Divergence, ERHIAccess::Unknown, ERHIAccess::CopyDest));
+	// 	int32 NextVelIdx = 1 - CurVelIdx;
+ //  
+	// 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 	ToUAV(InFluidResources->Velocity[NextVelIdx]);
+ //  
+	// 	TShaderMapRef<FFluidAdvectVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidAdvectVelocityCS::FParameters Params;
+	// 	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
+	// 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
+	// 	Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	// 	Params.DeltaTime = DeltaTime;
+	// 	Params.InvResolution  = InvResolution;
+	// 	Params.Resolution     = ResolutionPt;
+ //  
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 	CurVelIdx = NextVelIdx; 
+	// }
+ // 	 
+	// //// Step2: Vorticity
+	// //{
+	// //	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// //	ToUAV(InFluidResources->Vorticity);
+	// //
+	// //	TShaderMapRef<FFluidVorticityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// //	FFluidVorticityCS::FParameters Params;
+	// //
+	// //	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
+	// //	Params.VorticityOutput = MakeUAV(InFluidResources->Vorticity);
+	// //	Params.Resolution = ResolutionPt;
+	// //	Params.HalfInvDx = HalfInvDx;
+	// //
+	// //	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// //}
+	// //
+	// //// Step3: Vorticity Confinement Force
+	// //{
+	// //	int NextVelIdx = 1 - CurVelIdx;
+	// //	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// //	ToSRV(InFluidResources->Vorticity);
+	// //	ToUAV(InFluidResources->Velocity[NextVelIdx]);
+	// //
+	// //	TShaderMapRef<FFluidVorticityForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// //	FFluidVorticityForceCS::FParameters Params;
+	// //
+	// //	Params.VelocityInput = InFluidResources->VelocitySRV[CurVelIdx];
+	// //	Params.VorticityInput = MakeSRV(InFluidResources->Vorticity);
+	// //	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
+	// //	Params.Resolution = ResolutionPt;
+	// //	Params.VorticityStrength = InVorticityStrength;
+	// //	Params.DeltaTime = DeltaTime;
+	// //	Params.HalfInvDx = HalfInvDx;
+	// //
+	// //	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// //	CurVelIdx = NextVelIdx;
+	// //}
+	// if (InVisc > 0.0f)
+	// {
+	// 	// 원본 속도를 TempVelocity에 보관 (Jacobi "b" 항, 반복 내내 고정)
+	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Velocity[CurVelIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
+	// 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->TempVelocity, ERHIAccess::Unknown, ERHIAccess::CopyDest));
 	// 	FRHICopyTextureInfo CopyInfo;
-	// 	RHICmdList.CopyTexture(InFluidResources->Density[CurDenIdx], InFluidResources->Divergence, CopyInfo);
+	// 	RHICmdList.CopyTexture(InFluidResources->Velocity[CurVelIdx], InFluidResources->TempVelocity, CopyInfo);
 	//
-	// 	// Jacobi 확산 파라미터
-	// 	// DensityDiffusion: 클수록 더 많이 퍼짐 (0.5 ~ 50.0 범위에서 조절)
-	// 	const float DensityDiffusion = 10.0f;
-	// 	//const float DiffAlpha = 1.0f / (DensityDiffusion * DeltaTime);
-	// 	const float DiffAlpha = (Dx * Dx) / (DensityDiffusion * DeltaTime);
-	// 	const float DiffInvBeta = 1.0f / (4.0f + DiffAlpha);
-	// 	const int32 DiffIterations = 5;
+	// 	// Dx=1 이므로: a = dt * visc, Alpha = 1/a, InvBeta = 1/(4 + Alpha)
+	// 	//const float a = DeltaTime * InVisc;
+	// 	const float a = DeltaTime * InVisc / (Dx * Dx);
+	// 	const float ViscAlpha = 1.0f / a;
+	// 	const float ViscInvBeta = 1.0f / (4.0f + ViscAlpha);
 	//
-	// 	for (int32 i = 0; i < DiffIterations; ++i)
+	// 	for (int32 i = 0; i < 5; ++i)
 	// 	{
-	// 		int32 NextDenIdx = 1 - CurDenIdx;
+	// 		int32 NextVelIdx = 1 - CurVelIdx;
 	//
-	// 		ToSRV(InFluidResources->Density[CurDenIdx]);
-	// 		ToSRV(InFluidResources->Divergence);
-	// 		ToUAV(InFluidResources->Density[NextDenIdx]);
+	// 		ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 		ToSRV(InFluidResources->TempVelocity);
+	// 		ToUAV(InFluidResources->Velocity[NextVelIdx]);
 	//
-	// 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-	// 		FFluidDiffuseCS::FParameters Params;
-	// 		Params.InputTexture  = InFluidResources->DensitySRV[CurDenIdx];   // 이웃 (현재 추정)
-	// 		Params.PrevTexture   = InFluidResources->DivergenceSRV;           // 원본 밀도 (b)
-	// 		Params.OutputTexture = InFluidResources->DensityUAV[NextDenIdx];
-	// 		Params.Alpha         = DiffAlpha;
-	// 		Params.InvBeta       = DiffInvBeta;
+	// 		TShaderMapRef<FFluidDiffuseVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 		FFluidDiffuseVelocityCS::FParameters Params;
+	// 		Params.InputTexture  = InFluidResources->VelocitySRV[CurVelIdx];
+	// 		Params.PrevTexture   = InFluidResources->TempVelocitySRV;
+	// 		Params.OutputTexture = InFluidResources->VelocityUAV[NextVelIdx];
+	// 		Params.Alpha         = ViscAlpha;
+	// 		Params.InvBeta       = ViscInvBeta;
 	// 		Params.Resolution    = ResolutionPt;
 	//
 	// 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-	// 		CurDenIdx = NextDenIdx;
+	// 		CurVelIdx = NextVelIdx;
 	// 	}
-	//}
-	// Step 9: Advect Density
-	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectDensity");
-		int32 NextDenIdx = 1 - CurDenIdx;
-		ToSRV(InFluidResources->Velocity[CurVelIdx]);
-		ToSRV(InFluidResources->Density[CurDenIdx]);
-		ToUAV(InFluidResources->Density[NextDenIdx]);
-  
-		TShaderMapRef<FFluidAdvectCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidAdvectCS::FParameters Params;
-		Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
-		Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
-		Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
-		Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		Params.DeltaTime      = DeltaTime;
-		Params.InvResolution  = InvResolution;
-		Params.Resolution     = ResolutionPt;
-  
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-		CurDenIdx = NextDenIdx;
-	}
-	// Step 10: Density Maintenance pass
-	if (bInEnableDensityMaintenance && InBaseDensityNoiseTexture)
-	{
-		RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.DensityMaintenance");
-	 
-		int32 NextDenIdx = 1 - CurDenIdx; 	
-		ToSRV(InFluidResources->Density[CurDenIdx]);
-		ToUAV(InFluidResources->Density[NextDenIdx]);
-		
-		TShaderMapRef<FFluidDensityMaintenanceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FFluidDensityMaintenanceCS::FParameters Params;
-		
-		Params.DensityInput= InFluidResources->DensitySRV[CurDenIdx];
-		Params.DensityOutput = InFluidResources->DensityUAV[NextDenIdx];
-		
-		Params.NoiseTexture = InBaseDensityNoiseTexture;
-		Params.NoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Mirror, AM_Mirror, AM_Clamp>::GetRHI();
-		
-		Params.DeltaTime      = DeltaTime;
-		Params.BaseDensityTarget = FMath::Max(InBaseDensityTarget, 0.0f);
-		Params.BaseDensityRecoverySpeed = FMath::Max(InBaseDensityRecoverySpeed, 0.0f);
-		Params.BaseDensityDeadbandRatio = FMath::Clamp(InBaseDensityDeadbandRatio, 0.0f, 1.0f);
-		Params.BaseDensityNoiseRepeat = FMath::Max(InBaseDensityNoiseRepeat, 0.1f);
-		const bool bInitializeBaseDensity = !InFluidResources->bBaseDensityInitialized;
-		Params.InitializeBaseDensity = bInitializeBaseDensity ? 1u : 0u;
-		
-		Params.InvResolution = InvResolution;
-		Params.Resolution = ResolutionPt;
-		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
-		if (bInitializeBaseDensity)
-		{
-			InFluidResources->bBaseDensityInitialized = true;
-		}
-		
-		CurDenIdx = NextDenIdx;
-	}
-  
-	 OutVelIndex = CurVelIdx;
-	 OutDenIndex = CurDenIdx;
-	 OutPresIndex = CurPresIdx;
+	// }
+	// // Step 4: Force
+	// {
+	// 	SCOPED_DRAW_EVENTF(RHICmdList, VFF_FluidInteractionForce, TEXT("VFF_Fluid.InteractionForce") );
+	// 	
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Force");
+	//
+	// 	int32 NextVelIdx = 1 - CurVelIdx;
+	// 	int32 NextDenIdx = 1 - CurDenIdx;
+	// 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 	ToSRV(InFluidResources->Density[CurDenIdx]);
+	// 	ToUAV(InFluidResources->Velocity[NextVelIdx]);
+	// 	ToUAV(InFluidResources->Density[NextDenIdx]);
+ //  
+	// 	TShaderMapRef<FFluidForceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidForceCS::FParameters Params;
+	// 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+	// 	Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
+	// 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
+	// 	Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
+	// 	Params.ForcePosition  = InForcePosition;
+	// 	Params.ForceDirection = InForceDirection;
+	// 	Params.ForceRadius    = InForceRadius;
+	// 	Params.ForceStrength  = InForceStrength;
+	// 	Params.DensityAmount  = InDensityAmount;
+	// 	Params.DeltaTime      = DeltaTime;
+	// 	Params.Dissipation    = InDissipation;
+	// 	Params.CurlNoiseTexture = InCurlNoiseTexture;
+	// 	Params.CurlNoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
+	// 	Params.Time = InSimulationTime;
+	// 	Params.CurlSimulationTiling = InCurlSimulationTiling;
+	// 	Params.CurlSimulationSpeed = InCurlSimulationSpeed;
+	// 	Params.CurlVelocityStrength = InCurlVelocityStrength;
+	// 	Params.CurlDensityMaskScale = InCurlDensityMaskScale;
+	// 	//Interaction Param
+	// 	const uint32 InteractionForceSourceCount = FMath::Min(InInteractionForceSources.Num(), MAX_FLUID_INTERACTION_FORCE_SOURCE);
+	// 	Params.InteractionForceSourceCount = InteractionForceSourceCount;
+	// 	for (uint32 SourceIndex = 0; SourceIndex < InteractionForceSourceCount; ++SourceIndex)
+	// 	{
+	// 		Params.InteractionForcePositionRadius[SourceIndex] = InInteractionForceSources[SourceIndex].PositionRadius;
+	// 		Params.InteractionForceVectorDensity[SourceIndex] = InInteractionForceSources[SourceIndex].ForceDensity;
+	// 	}
+	// 	Params.InvResolution  = InvResolution;
+	// 	Params.Resolution     = ResolutionPt;
+ //  
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 	CurVelIdx = NextVelIdx;
+	// 	CurDenIdx = NextDenIdx;
+	// } 
+	//
+	// // Step 5: Divergence
+	// {
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.Divergence");
+	//
+	// 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 	ToUAV(InFluidResources->Divergence);
+ //  
+	// 	TShaderMapRef<FFluidDivergenceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidDivergenceCS::FParameters Params;
+	// 	Params.VelocityInput    = InFluidResources->VelocitySRV[CurVelIdx];
+	// 	Params.DivergenceOutput = InFluidResources->DivergenceUAV;
+	// 	Params.Resolution       = ResolutionPt;
+	// 	Params.HalfInvDx        = HalfInvDx;
+ //  
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount); 
+	// }
+ //  
+	// // Step 6: Pressure Solve (Jacobi iteration)
+	// {
+	//
+	// 	{
+	// 		RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[0], FVector4f(0, 0, 0, 0));
+	// 		RHICmdList.ClearUAVFloat(InFluidResources->PressureUAV[1], FVector4f(0, 0, 0, 0));
+	// 	}
+	// 	CurPresIdx = 0;
+ // 	 	
+	// 	const float Alpha = -(Dx * Dx);
+	// 	const float InvBeta = 0.25f;
+ // 	 	
+	// 	for (int32 i = 0; i < InPressureIterations; ++i)
+	// 	{
+	// 		int32 NextPresIdx = 1 - CurPresIdx;
+ //  
+	// 		ToSRV(InFluidResources->Pressure[CurPresIdx]);
+	// 		ToSRV(InFluidResources->Divergence);
+	// 		ToUAV(InFluidResources->Pressure[NextPresIdx]);
+ //  
+	// 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 		FFluidDiffuseCS::FParameters Params;
+	// 		Params.InputTexture  = InFluidResources->PressureSRV[CurPresIdx];
+	// 		Params.PrevTexture   = InFluidResources->DivergenceSRV;
+	// 		Params.OutputTexture = InFluidResources->PressureUAV[NextPresIdx];
+	// 		Params.Alpha         = Alpha;
+	// 		Params.InvBeta       = InvBeta;
+	// 		Params.Resolution    = ResolutionPt;
+ //  
+	// 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 		CurPresIdx = NextPresIdx;
+	// 	} 
+	// }
+ // 	
+	// // Step 7: Gradient Subtract — velocity
+	// {
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.GradientSubtract");
+	//
+	// 	int32 NextVelIdx = 1 - CurVelIdx;
+	// 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 	ToSRV(InFluidResources->Pressure[CurPresIdx]);
+	// 	ToUAV(InFluidResources->Velocity[NextVelIdx]);
+ //  
+	// 	TShaderMapRef<FFluidGradientSubtractCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidGradientSubtractCS::FParameters Params;
+	// 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+	// 	Params.PressureInput  = InFluidResources->PressureSRV[CurPresIdx];
+	// 	Params.VelocityOutput = InFluidResources->VelocityUAV[NextVelIdx];
+	// 	Params.Resolution     = ResolutionPt;
+	// 	Params.HalfInvDx      = HalfInvDx;
+ //  
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 	CurVelIdx = NextVelIdx;
+	// }
+	//
+	// // Step 8 : Diffuse
+	// //{
+	// // 	// Divergence 텍스처를 임시 버퍼로 사용 (이 시점에서 안 쓰니까)
+	// // 	// 확산 전 원본 밀도를 보관
+	// // 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Density[CurDenIdx], ERHIAccess::Unknown, ERHIAccess::CopySrc));
+	// // 	RHICmdList.Transition(FRHITransitionInfo(InFluidResources->Divergence, ERHIAccess::Unknown, ERHIAccess::CopyDest));
+	// // 	FRHICopyTextureInfo CopyInfo;
+	// // 	RHICmdList.CopyTexture(InFluidResources->Density[CurDenIdx], InFluidResources->Divergence, CopyInfo);
+	// //
+	// // 	// Jacobi 확산 파라미터
+	// // 	// DensityDiffusion: 클수록 더 많이 퍼짐 (0.5 ~ 50.0 범위에서 조절)
+	// // 	const float DensityDiffusion = 10.0f;
+	// // 	//const float DiffAlpha = 1.0f / (DensityDiffusion * DeltaTime);
+	// // 	const float DiffAlpha = (Dx * Dx) / (DensityDiffusion * DeltaTime);
+	// // 	const float DiffInvBeta = 1.0f / (4.0f + DiffAlpha);
+	// // 	const int32 DiffIterations = 5;
+	// //
+	// // 	for (int32 i = 0; i < DiffIterations; ++i)
+	// // 	{
+	// // 		int32 NextDenIdx = 1 - CurDenIdx;
+	// //
+	// // 		ToSRV(InFluidResources->Density[CurDenIdx]);
+	// // 		ToSRV(InFluidResources->Divergence);
+	// // 		ToUAV(InFluidResources->Density[NextDenIdx]);
+	// //
+	// // 		TShaderMapRef<FFluidDiffuseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// // 		FFluidDiffuseCS::FParameters Params;
+	// // 		Params.InputTexture  = InFluidResources->DensitySRV[CurDenIdx];   // 이웃 (현재 추정)
+	// // 		Params.PrevTexture   = InFluidResources->DivergenceSRV;           // 원본 밀도 (b)
+	// // 		Params.OutputTexture = InFluidResources->DensityUAV[NextDenIdx];
+	// // 		Params.Alpha         = DiffAlpha;
+	// // 		Params.InvBeta       = DiffInvBeta;
+	// // 		Params.Resolution    = ResolutionPt;
+	// //
+	// // 		FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// // 		CurDenIdx = NextDenIdx;
+	// // 	}
+	// //}
+	// // Step 9: Advect Density
+	// {
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.AdvectDensity");
+	// 	int32 NextDenIdx = 1 - CurDenIdx;
+	// 	ToSRV(InFluidResources->Velocity[CurVelIdx]);
+	// 	ToSRV(InFluidResources->Density[CurDenIdx]);
+	// 	ToUAV(InFluidResources->Density[NextDenIdx]);
+ //  
+	// 	TShaderMapRef<FFluidAdvectCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidAdvectCS::FParameters Params;
+	// 	Params.VelocityInput  = InFluidResources->VelocitySRV[CurVelIdx];
+	// 	Params.DensityInput   = InFluidResources->DensitySRV[CurDenIdx];
+	// 	Params.DensityOutput  = InFluidResources->DensityUAV[NextDenIdx];
+	// 	Params.BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	// 	Params.DeltaTime      = DeltaTime;
+	// 	Params.InvResolution  = InvResolution;
+	// 	Params.Resolution     = ResolutionPt;
+ //  
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 	CurDenIdx = NextDenIdx;
+	// }
+	// // Step 10: Density Maintenance pass
+	// if (bInEnableDensityMaintenance && InBaseDensityNoiseTexture)
+	// {
+	// 	RHI_BREADCRUMB_EVENT(RHICmdList, "VFF_Fluid.DensityMaintenance");
+	//  
+	// 	int32 NextDenIdx = 1 - CurDenIdx; 	
+	// 	ToSRV(InFluidResources->Density[CurDenIdx]);
+	// 	ToUAV(InFluidResources->Density[NextDenIdx]);
+	// 	
+	// 	TShaderMapRef<FFluidDensityMaintenanceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	// 	FFluidDensityMaintenanceCS::FParameters Params;
+	// 	
+	// 	Params.DensityInput= InFluidResources->DensitySRV[CurDenIdx];
+	// 	Params.DensityOutput = InFluidResources->DensityUAV[NextDenIdx];
+	// 	
+	// 	Params.NoiseTexture = InBaseDensityNoiseTexture;
+	// 	Params.NoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Mirror, AM_Mirror, AM_Clamp>::GetRHI();
+	// 	
+	// 	Params.DeltaTime      = DeltaTime;
+	// 	Params.BaseDensityTarget = FMath::Max(InBaseDensityTarget, 0.0f);
+	// 	Params.BaseDensityRecoverySpeed = FMath::Max(InBaseDensityRecoverySpeed, 0.0f);
+	// 	Params.BaseDensityDeadbandRatio = FMath::Clamp(InBaseDensityDeadbandRatio, 0.0f, 1.0f);
+	// 	Params.BaseDensityNoiseRepeat = FMath::Max(InBaseDensityNoiseRepeat, 0.1f);
+	// 	const bool bInitializeBaseDensity = !InFluidResources->bBaseDensityInitialized;
+	// 	Params.InitializeBaseDensity = bInitializeBaseDensity ? 1u : 0u;
+	// 	
+	// 	Params.InvResolution = InvResolution;
+	// 	Params.Resolution = ResolutionPt;
+	// 	FComputeShaderUtils::Dispatch(RHICmdList, Shader, Params, GroupCount);
+	// 	if (bInitializeBaseDensity)
+	// 	{
+	// 		InFluidResources->bBaseDensityInitialized = true;
+	// 	}
+	// 	
+	// 	CurDenIdx = NextDenIdx;
+	// }
+ //  
+	//  OutVelIndex = CurVelIdx;
+	//  OutDenIndex = CurDenIdx;
+	//  OutPresIndex = CurPresIdx;
  
  }
-  
+
+void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& RHICmdList,
+	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
+	int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition, FVector2f InForceDirection, float InForceRadius,
+	float InForceStrength, float InDensityAmount, float InDissipation, FTextureRHIRef InCurlNoiseTexture,
+	float InSimulationTime, float InCurlSiumlationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength,
+	float InCurlDensityMaskScale, float InVorticityStrength, float InVisc, int32 InPressureIterations,
+	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
+	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
+	const TArray<FFluidInteractionForceSource>& InInteractionForceSources, int32& OutVelIndex, int32& OutDenIndex,
+	int32& OutPresIndex)
+{
+	FRDGBuilder GraphBuilder(RHICmdList);
+	
+	AddSimulationPasses(
+	   GraphBuilder,
+	   FluidResources,
+	   DeltaTime,
+	   InVelIndex,
+	   InDenIndex,
+	   InPresIndex,
+	   InForcePosition,
+	   InForceDirection,
+	   InForceRadius,
+	   InForceStrength,
+	   InDensityAmount,
+	   InDissipation,
+	   InCurlNoiseTexture,
+	   InSimulationTime,
+	   InCurlSiumlationTiling,
+	   InCurlSimulationSpeed,
+	   InCurlVelocityStrength,
+	   InCurlDensityMaskScale,
+	   InVorticityStrength,
+	   InVisc,
+	   InPressureIterations,
+	   bInEnableDensityMaintenance,
+	   InBaseDensityNoiseTexture,
+	   InBaseDensityTarget,
+	   InBaseDensityRecoverySpeed,
+	   InBaseDensityDeadbandRatio,
+	   InBaseDensityNoiseRepeat,
+	   InInteractionForceSources,
+	   OutVelIndex,
+	   OutDenIndex,
+	   OutPresIndex);
+
+	GraphBuilder.Execute();
+}
+
+void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
+	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
+	int32 InDenIndex, int32 InPresIndex, FVector2f InForcePosition, FVector2f InForceDirection, float InForceRadius,
+	float InForceStrength, float InDensityAmount, float InDissipation, FTextureRHIRef InCurlNoiseTexture,
+	float InSimulationTime, float InCurlSiumlationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength,
+	float InCurlDensityMaskScale, float InVorticityStrength, float InVisc, int32 InPressureIterations,
+	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
+	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
+	const TArray<FFluidInteractionForceSource>& InInteractionForceSources, int32& OutVelIndex, int32& OutDenIndex,
+	int32& OutPresIndex)
+{
+	const int32 Resolution = FluidResources->Resolution;
+	const float Dx = 1.0f / static_cast<float>(Resolution);
+	const float HalfInvDx = 0.5f * static_cast<float>(Resolution);
+	const FVector2f InvResolution(Dx, Dx);
+	const FIntPoint ResolutionPt(Resolution, Resolution);
+	
+	/** Compute Shader Group Calculation */
+	const FIntVector GroupCount(
+		FMath::DivideAndRoundUp(Resolution, 8),	
+		FMath::DivideAndRoundUp(Resolution, 8),
+		1
+	); 
+
+	FRDGTextureRef BlackFallback =
+		GSystemTextures.GetBlackDummy(GraphBuilder);
+
+	TRefCountPtr<IPooledRenderTarget> CurlNoisePooledRT;
+	FRDGTextureRef CurlNoise = BlackFallback;
+
+	if (InCurlNoiseTexture)
+	{
+		CurlNoisePooledRT = CreateRenderTarget(
+			InCurlNoiseTexture,
+			TEXT("FluidCurlNoise"));
+
+		CurlNoise = GraphBuilder.RegisterExternalTexture(
+			CurlNoisePooledRT,
+			TEXT("FluidCurlNoise"));
+	}
+
+	TRefCountPtr<IPooledRenderTarget> BaseDensityNoisePooledRT;
+	FRDGTextureRef BaseDensityNoise = BlackFallback;
+
+	if (InBaseDensityNoiseTexture)
+	{
+		BaseDensityNoisePooledRT = CreateRenderTarget(
+			InBaseDensityNoiseTexture,
+			TEXT("FluidBaseDensityNoise"));
+
+		BaseDensityNoise = GraphBuilder.RegisterExternalTexture(
+			BaseDensityNoisePooledRT,
+			TEXT("FluidBaseDensityNoise"));
+	}
+	
+	FRDGTextureRef Velocity[2] = {
+		GraphBuilder.RegisterExternalTexture(
+		FluidResources->VelocityPooledRT[0],
+		TEXT("FluidVelocityA"),
+		ERDGTextureFlags::MultiFrame
+		),
+		
+		GraphBuilder.RegisterExternalTexture(
+		FluidResources->VelocityPooledRT[1],
+		TEXT("FluidVelocityB"),
+		ERDGTextureFlags::MultiFrame)
+	};
+	
+	FRDGTextureRef Density[2] = {
+		GraphBuilder.RegisterExternalTexture(
+	   FluidResources->DensityPooledRT[0],
+	   TEXT("FluidDensityA"),
+	   ERDGTextureFlags::MultiFrame),
+		
+		GraphBuilder.RegisterExternalTexture(
+	   FluidResources->DensityPooledRT[1],
+	   TEXT("FluidDensityB"),
+	   ERDGTextureFlags::MultiFrame)
+	};
+	
+	FRDGTextureRef Pressure[2] = {  
+		GraphBuilder.RegisterExternalTexture(
+		FluidResources->PressurePooledRT[0],
+		TEXT("FluidPressureA"),
+		ERDGTextureFlags::MultiFrame),
+
+	GraphBuilder.RegisterExternalTexture(
+		FluidResources->PressurePooledRT[1],
+		TEXT("FluidPressureB"),
+		ERDGTextureFlags::MultiFrame)
+	};
+	
+	FRDGTextureRef Divergence = GraphBuilder.RegisterExternalTexture(
+	FluidResources->DivergencePooledRT,
+	TEXT("FluidDivergence"),
+	ERDGTextureFlags::MultiFrame);
+
+	FRDGTextureRef TempVelocity = GraphBuilder.RegisterExternalTexture(
+		FluidResources->TempVelocityPooledRT,
+		TEXT("FluidTempVelocity"),
+		ERDGTextureFlags::MultiFrame);
+
+	int32 CurVelIdx = InVelIndex;
+	int32 CurDenIdx = InDenIndex;
+	int32 CurPresIdx = InPresIndex; 
+	
+	
+	{
+		const int32 NextVelIdx = 1 - CurVelIdx;
+
+		TShaderMapRef<FFluidAdvectVelocityCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		auto* Params = GraphBuilder.AllocParameters<
+			FFluidAdvectVelocityCS::FParameters>();
+
+		Params->VelocityInput = Velocity[CurVelIdx];
+		Params->VelocityOutput = GraphBuilder.CreateUAV(Velocity[NextVelIdx]);
+		Params->BilinearSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		Params->DeltaTime = DeltaTime;
+		Params->InvResolution = InvResolution;
+		Params->Resolution = ResolutionPt;
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("VFF_Fluid.AdvectVelocity"),
+			Shader,
+			Params,
+			GroupCount);
+
+		CurVelIdx = NextVelIdx;
+	}
+	// Viscosity
+	if (InVisc > 0.0f)
+	{
+		AddCopyTexturePass(
+			GraphBuilder,
+			Velocity[CurVelIdx],
+			TempVelocity);
+
+		const float A = DeltaTime * InVisc / (Dx * Dx);
+		const float ViscAlpha = 1.0f / A;
+		const float ViscInvBeta = 1.0f / (4.0f + ViscAlpha);
+
+		TShaderMapRef<FFluidDiffuseVelocityCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		for (int32 Iteration = 0; Iteration < 5; ++Iteration)
+		{
+			const int32 NextVelIdx = 1 - CurVelIdx;
+
+			auto* Params = GraphBuilder.AllocParameters<
+				FFluidDiffuseVelocityCS::FParameters>();
+
+			Params->InputTexture = Velocity[CurVelIdx];
+			Params->PrevTexture = TempVelocity;
+			Params->OutputTexture = GraphBuilder.CreateUAV(Velocity[NextVelIdx]);
+			Params->Alpha = ViscAlpha;
+			Params->InvBeta = ViscInvBeta;
+			Params->Resolution = ResolutionPt;
+
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("VFF_Fluid.DiffuseVelocity %d", Iteration),
+				Shader,
+				Params,
+				GroupCount);
+
+			CurVelIdx = NextVelIdx;
+		}
+	}
+	
+	// Force
+	{
+		const int32 NextVelIdx = 1 - CurVelIdx;
+	    const int32 NextDenIdx = 1 - CurDenIdx;
+
+	    TShaderMapRef<FFluidForceCS> Shader(
+	        GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+	    auto* Params = GraphBuilder.AllocParameters<
+	        FFluidForceCS::FParameters>();
+
+	    Params->VelocityInput = Velocity[CurVelIdx];
+	    Params->DensityInput = Density[CurDenIdx];
+	    Params->VelocityOutput = GraphBuilder.CreateUAV(Velocity[NextVelIdx]);
+	    Params->DensityOutput = GraphBuilder.CreateUAV(Density[NextDenIdx]);
+
+	    Params->ForcePosition = InForcePosition;
+	    Params->ForceDirection = InForceDirection;
+	    Params->ForceRadius = InForceRadius;
+	    Params->ForceStrength = InForceStrength;
+	    Params->DensityAmount = InDensityAmount;
+	    Params->DeltaTime = DeltaTime;
+	    Params->Dissipation = InDissipation;
+
+	    // 현재는 일반 RHI texture parameter로 유지한 상태입니다.
+	    Params->CurlNoiseTexture = CurlNoise;
+	    Params->CurlNoiseSampler =
+	        TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
+	    Params->Time = InSimulationTime;
+	    Params->CurlSimulationTiling = InCurlSiumlationTiling;
+	    Params->CurlSimulationSpeed = InCurlSimulationSpeed;
+	    Params->CurlVelocityStrength = InCurlVelocityStrength;
+	    Params->CurlDensityMaskScale = InCurlDensityMaskScale;
+
+	    const uint32 SourceCount = FMath::Min(
+	        InInteractionForceSources.Num(),
+	        MAX_FLUID_INTERACTION_FORCE_SOURCE);
+
+	    Params->InteractionForceSourceCount = SourceCount;
+
+	    for (uint32 SourceIndex = 0; SourceIndex < SourceCount; ++SourceIndex)
+	    {
+	        Params->InteractionForcePositionRadius[SourceIndex] =
+	            InInteractionForceSources[SourceIndex].PositionRadius;
+
+	        Params->InteractionForceVectorDensity[SourceIndex] =
+	            InInteractionForceSources[SourceIndex].ForceDensity;
+	    }
+
+	    Params->InvResolution = InvResolution;
+	    Params->Resolution = ResolutionPt;
+
+	    FComputeShaderUtils::AddPass(
+	        GraphBuilder,
+	        RDG_EVENT_NAME("VFF_Fluid.Force"),
+	        Shader,
+	        Params,
+	        GroupCount);
+
+	    CurVelIdx = NextVelIdx;
+	    CurDenIdx = NextDenIdx;
+	}
+	
+	// Divergence 
+	{
+		TShaderMapRef<FFluidDivergenceCS> Shader(
+		GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		auto* Params = GraphBuilder.AllocParameters<
+			FFluidDivergenceCS::FParameters>();
+
+		Params->VelocityInput = Velocity[CurVelIdx];
+		Params->DivergenceOutput = GraphBuilder.CreateUAV(Divergence);
+		Params->Resolution = ResolutionPt;
+		Params->HalfInvDx = HalfInvDx;
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("VFF_Fluid.Divergence"),
+			Shader,
+			Params,
+			GroupCount);
+
+	}
+	
+	// Pressure solve
+	{
+		AddClearUAVPass(
+	GraphBuilder,
+	GraphBuilder.CreateUAV(Pressure[0]),
+	FVector4f::Zero());
+
+		AddClearUAVPass(
+			GraphBuilder,
+			GraphBuilder.CreateUAV(Pressure[1]),
+			FVector4f::Zero());
+
+		CurPresIdx = 0;
+
+		const float Alpha = -(Dx * Dx);
+		const float InvBeta = 0.25f;
+
+		TShaderMapRef<FFluidDiffuseCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		for (int32 Iteration = 0; Iteration < InPressureIterations; ++Iteration)
+		{
+			const int32 NextPresIdx = 1 - CurPresIdx;
+
+			auto* Params = GraphBuilder.AllocParameters<
+				FFluidDiffuseCS::FParameters>();
+
+			Params->InputTexture = Pressure[CurPresIdx];
+			Params->PrevTexture = Divergence;
+			Params->OutputTexture = GraphBuilder.CreateUAV(Pressure[NextPresIdx]);
+			Params->Alpha = Alpha;
+			Params->InvBeta = InvBeta;
+			Params->Resolution = ResolutionPt;
+
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("VFF_Fluid.Pressure %d", Iteration),
+				Shader,
+				Params,
+				GroupCount);
+
+			CurPresIdx = NextPresIdx;
+		}
+	}
+	
+	// Gradient subtract 
+	{
+		const int32 NextVelIdx = 1 - CurVelIdx;
+
+		TShaderMapRef<FFluidGradientSubtractCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		auto* Params = GraphBuilder.AllocParameters<
+			FFluidGradientSubtractCS::FParameters>();
+
+		Params->VelocityInput = Velocity[CurVelIdx];
+		Params->PressureInput = Pressure[CurPresIdx];
+		Params->VelocityOutput = GraphBuilder.CreateUAV(Velocity[NextVelIdx]);
+		Params->Resolution = ResolutionPt;
+		Params->HalfInvDx = HalfInvDx;
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("VFF_Fluid.GradientSubtract"),
+			Shader,
+			Params,
+			GroupCount);
+
+		CurVelIdx = NextVelIdx; 
+	}
+	
+	// Density Advection
+	{
+		const int32 NextDenIdx = 1 - CurDenIdx;
+
+		TShaderMapRef<FFluidAdvectCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		auto* Params = GraphBuilder.AllocParameters<
+			FFluidAdvectCS::FParameters>();
+
+		Params->VelocityInput = Velocity[CurVelIdx];
+		Params->DensityInput = Density[CurDenIdx];
+		Params->DensityOutput = GraphBuilder.CreateUAV(Density[NextDenIdx]);
+		Params->BilinearSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		Params->DeltaTime = DeltaTime;
+		Params->InvResolution = InvResolution;
+		Params->Resolution = ResolutionPt;
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("VFF_Fluid.AdvectDensity"),
+			Shader,
+			Params,
+			GroupCount);
+
+		CurDenIdx = NextDenIdx;
+	}
+	
+	// Density maintenance
+	if (bInEnableDensityMaintenance && InBaseDensityNoiseTexture)
+	{
+		const int32 NextDenIdx = 1 - CurDenIdx;
+
+		TShaderMapRef<FFluidDensityMaintenanceCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+		auto* Params = GraphBuilder.AllocParameters<
+			FFluidDensityMaintenanceCS::FParameters>();
+
+		Params->DensityInput = Density[CurDenIdx];
+		Params->DensityOutput = GraphBuilder.CreateUAV(Density[NextDenIdx]);
+		Params->NoiseTexture = BaseDensityNoise;
+		Params->NoiseSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Mirror, AM_Mirror, AM_Clamp>::GetRHI();
+
+		Params->DeltaTime = DeltaTime;
+		Params->BaseDensityTarget = FMath::Max(InBaseDensityTarget, 0.0f);
+		Params->BaseDensityRecoverySpeed =
+			FMath::Max(InBaseDensityRecoverySpeed, 0.0f);
+		Params->BaseDensityDeadbandRatio =
+			FMath::Clamp(InBaseDensityDeadbandRatio, 0.0f, 1.0f);
+		Params->BaseDensityNoiseRepeat =
+			FMath::Max(InBaseDensityNoiseRepeat, 0.1f);
+
+		const bool bInitializeBaseDensity =
+			!FluidResources->bBaseDensityInitialized;
+
+		Params->InitializeBaseDensity =
+			bInitializeBaseDensity ? 1u : 0u;
+
+		Params->InvResolution = InvResolution;
+		Params->Resolution = ResolutionPt;
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("VFF_Fluid.DensityMaintenance"),
+			Shader,
+			Params,
+			GroupCount);
+
+		if (bInitializeBaseDensity)
+		{
+			FluidResources->bBaseDensityInitialized = true;
+		}
+
+		CurDenIdx = NextDenIdx;
+	}
+	
+	OutVelIndex = CurVelIdx;
+	OutDenIndex = CurDenIdx;
+	OutPresIndex = CurPresIdx;
+}
+
 void UFluidSimulationComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
