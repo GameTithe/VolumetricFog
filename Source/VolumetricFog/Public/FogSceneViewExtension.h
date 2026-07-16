@@ -26,11 +26,7 @@ public:
 	
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DensityTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearSampler)
-	
-		// Modeling Noise Textures
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ShapeNoiseTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, ShapeNoiseSampler) 
-	
+	 
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneDepthViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, OutputViewport)
@@ -66,8 +62,7 @@ public:
 		SHADER_PARAMETER(int32, FogDebugMode)
 		
 		//Self Shadow  
-		SHADER_PARAMETER(FVector3f, SelfShadowLightDirection)
-		SHADER_PARAMETER(FVector3f, SelfShadowLightColor)
+		SHADER_PARAMETER(FVector3f, SelfShadowLightDirection) 
 		SHADER_PARAMETER(float, SelfShadowLightIntensity)
 		SHADER_PARAMETER(float, SelfShadowDensityScale)
 		SHADER_PARAMETER(int32, SelfShadowStepCount)
@@ -137,8 +132,7 @@ struct FFluidFogRenderState
 	
 	// Self Shadow 
 	FVector3f SelfShadowLightDirection = FVector3f(0.4f, 0.2f, 1.0f);
-	FVector3f SelfShadowLightColor = FVector3f(1.0f, 1.0f, 1.0f);
-	 
+ 	 
 	float SelfShadowLightIntensity = 1.0f;
 	float SelfShadowDensityScale = 1.0f;
 	int32 SelfShadowStepCount = 6;
@@ -176,7 +170,6 @@ private:
 
 	FFluidFogRenderState RenderState;
 	TRefCountPtr<IPooledRenderTarget> DensityPooledRT;  
-	TRefCountPtr<IPooledRenderTarget> ShapeNoisePooledRT;
 	
 	FDelegateHandle PostOpaqueDelegateHandle; 
 	

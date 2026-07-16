@@ -141,16 +141,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, VelocityOutput)
 
 		SHADER_PARAMETER(float, DeltaTime)
-		SHADER_PARAMETER(float, Dissipation)
-
-		//Curl Noise
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CurlNoiseTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, CurlNoiseSampler)
-		SHADER_PARAMETER(float, Time)
-		SHADER_PARAMETER(float, CurlSimulationTiling)
-		SHADER_PARAMETER(float, CurlSimulationSpeed)
-		SHADER_PARAMETER(float, CurlVelocityStrength)
-		SHADER_PARAMETER(float, CurlDensityMaskScale)
+		SHADER_PARAMETER(float, Dissipation) 
 		
 		// Interaction Params
 		SHADER_PARAMETER(uint32, InteractionForceSourceCount) 

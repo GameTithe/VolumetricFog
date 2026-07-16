@@ -68,8 +68,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	FRDGTextureRef DensityRDG = GraphBuilder.RegisterExternalTexture(DensityPooledRT);
 	
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
-	FRDGTextureRef ShapeNoiseRDG = ShapeNoisePooledRT ? GraphBuilder.RegisterExternalTexture(ShapeNoisePooledRT) : SystemTextures.White;
-	
+ 	
 	/** HeightCurve가 전송되기 전이면 Fallback texture 사용 */
 	FRDGTextureRef HeightCurveRDG;
 	if (HeightCurvePooledRT)
@@ -97,8 +96,6 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 
 	Params->DensityTexture  = DensityRDG;
 	Params->BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp>::GetRHI();
-	Params->ShapeNoiseTexture = ShapeNoiseRDG;
-	Params->ShapeNoiseSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
 
 	Params->InvViewProjectionMatrix = FMatrix44f(View.ViewMatrices.GetInvViewProjectionMatrix());
 	Params->CameraPosition = FVector3f(View.ViewMatrices.GetViewOrigin());
@@ -125,8 +122,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	Params->FogDebugMode = State.FogDebugMode;
 	
 	// Self Shadow   
-	Params->SelfShadowLightDirection = State.SelfShadowLightDirection;
-	Params->SelfShadowLightColor = State.SelfShadowLightColor;
+	Params->SelfShadowLightDirection = State.SelfShadowLightDirection; 
 	Params->SelfShadowLightIntensity = State.SelfShadowLightIntensity;
 	Params->SelfShadowDensityScale = State.SelfShadowDensityScale;
 	Params->SelfShadowStepCount = State.SelfShadowStepCount;
@@ -176,8 +172,7 @@ void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRender
 	check(IsInRenderingThread());
 	
 	const bool bDensityChanged = (RenderState.DensityTexture != InState.DensityTexture); 
-	const bool bShapeNoiseChanged = (RenderState.ShapeNoiseTexture != InState.ShapeNoiseTexture);
-	
+ 	
 	RenderState = InState;
 	
 	if (RenderState.DensityTexture)
@@ -190,19 +185,6 @@ void FFogSceneViewExtension::ApplyRenderState_RenderThread(const FFluidFogRender
 	else
 	{
 		DensityPooledRT.SafeRelease();
-	}
-
-	// Shape Noise Texture
-	if (RenderState.ShapeNoiseTexture)
-	{
-		if (bShapeNoiseChanged || !ShapeNoisePooledRT)
-		{
-			ShapeNoisePooledRT = CreateRenderTarget(RenderState.ShapeNoiseTexture, TEXT("FogShapeNoise"));
-		}
-	}
-	else
-	{
-		ShapeNoisePooledRT.SafeRelease();
 	} 
 }
 

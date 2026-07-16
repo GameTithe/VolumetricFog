@@ -4,21 +4,10 @@ Texture2D<float> DensityInput;
 Texture2D<float2> VelocityInput;
 RWTexture2D<float> DensityOutput;
 RWTexture2D<float2> VelocityOutput;
-
-//Curl
-Texture2D<float4> CurlNoiseTexture;
-SamplerState CurlNoiseSampler; 
-
-float Time;
-
+ 
 float DeltaTime;
-float Dissipation;  //밀도 감쇠
 
-// Curl
-float CurlSimulationTiling;
-float CurlSimulationSpeed;  
-float CurlVelocityStrength;
-float CurlDensityMaskScale;
+float Dissipation;  //밀도 감쇠
 
 // Interaction
 #define MAX_FLUID_INTERACTION_FORCE_SOURCE 8
@@ -63,18 +52,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     }
     
     // 믿도 감쇠 
-    float NewDensity = (Density) * Dissipation;
-     
-    // CurlNoise -> Velocity Force
-    float2 NoiseUV = frac(UV * CurlSimulationTiling + float2(CurlSimulationSpeed * Time, CurlSimulationSpeed * Time));
-     
-    // xy 평면에서의 simulation이기에 rg만 받아오면서, [0,1] to [-1,1]
-    float2 CurlFlow = CurlNoiseTexture.SampleLevel(CurlNoiseSampler, NoiseUV, 0).rg * 2.0f - 1.0f;
-    
-    float DensityMask = saturate(NewDensity * CurlDensityMaskScale);
-    //Vel += CurlFlow * CurlVelocityStrength * DensityMask * DeltaTime; 
-    
-    //Vel += CurlFlow * CurlVelocityStrength * DeltaTime;
+    float NewDensity = (Density) * Dissipation; 
     
     VelocityOutput[DTid.xy] = Vel;
     DensityOutput[DTid.xy] = NewDensity; 

@@ -186,24 +186,13 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	float Vortiy = VorticityStrengthParam;
 	float Visc = Viscosity;
 	int32 PresItr = PressureIterations; 
-
-    float SimTime = AccumulatedTime + DeltaTime;
-    float CurlTiling = CurlSimulationTiling;
-    float CurlSpeed = CurlSimulationSpeed;
-    float CurlStrength = CurlVelocityStrength;
-    float CurlMaskScale = CurlDensityMaskScale;
-	
+ 
 	const bool bDensityMaintenance = bEnableDensityMaintenance;
 	const float DensityTarget = BaseDensityTarget;
 	const float DensityRecoverySpeed = BaseDensityRecoverySpeed;
 	const float DensityDeadbandRatio = BaseDensityDeadbandRatio;
 	const float DensityNoiseRepeat = BaseDensityNoiseRepeat;
-	
-    FTextureRHIRef CurlSimulationTexRHI = nullptr;
-    if (CurlNoiseTexture && CurlNoiseTexture->GetResource())
-    {
-        CurlSimulationTexRHI = CurlNoiseTexture->GetResource()->TextureRHI;
-    }
+	 
 	FTextureRHIRef BaseDensityNoiseTexRHI = nullptr;
 	if (BaseDensityNoiseTexture && BaseDensityNoiseTexture->GetResource())
 	{
@@ -219,8 +208,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
 	[ Resources, Ext, Snapshot, 
-		DT, Diss, 
-        CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale,
+		DT, Diss,  
         bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
         InteractionForceSources,
         Vortiy, Visc, PresItr](FRHICommandListImmediate& RHICmdList) mutable 
@@ -246,7 +234,6 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		UFluidSimulationComponent::ExecuteSimulationRDG(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
 					   Diss, 
-                       CurlSimulationTexRHI, SimTime, CurlTiling, CurlSpeed, CurlStrength, CurlMaskScale, 
                        Vortiy, Visc, PresItr,
                        bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
                        InteractionForceSources,
@@ -264,10 +251,7 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 			Ext->ApplyRenderState_RenderThread(Snapshot);
 		}
 	}
-	);
-	
-	AccumulatedTime += DeltaTime;
- 
+	);  
 }
 
 void UFluidSimulationComponent::HandleInteractionBeginOverlap(UPrimitiveComponent* OverlappedComponent,
@@ -549,11 +533,6 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 		State.FogBaseHeight = BoundsOrigin.Z - BoundsExtents.Z;
 		State.FogMaxHeight = BoundsOrigin.Z + BoundsExtents.Z;
 	}
-	 
-	if (ShapeNoiseTexture && ShapeNoiseTexture->GetResource())
-	{
-		State.ShapeNoiseTexture = ShapeNoiseTexture->GetResource()->TextureRHI;
-	}
 	
 	
 	//Dir Of Directional Light 	
@@ -572,8 +551,7 @@ FFluidFogRenderState UFluidSimulationComponent::BuildFogRenderStateSnapShot() co
 	State.SelfShadowLightDirection = FVector3f(SafeToLight);
 	
 	//Self Shadow  
-	State.SelfShadowLightColor = FVector3f(SelfShadowLightColor.R, SelfShadowLightColor.G, SelfShadowLightColor.B);
-	State.SelfShadowLightIntensity = SelfShadowLightIntensity; 
+ 	State.SelfShadowLightIntensity = SelfShadowLightIntensity; 
 	State.SelfShadowDensityScale = SelfShadowDensityScale;
 	State.SelfShadowStepCount = SelfShadowStepCount;
 	State.SelfShadowMaxDistance = SelfShadowMaxDistance; 
@@ -658,9 +636,8 @@ void UFluidSimulationComponent::ReleaseHeightCurveFromFogExtension()
 
 void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& RHICmdList,
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
-	int32 InDenIndex, int32 InPresIndex, float InDissipation, FTextureRHIRef InCurlNoiseTexture,
-	float InSimulationTime, float InCurlSiumlationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength,
-	float InCurlDensityMaskScale, float InVorticityStrength, float InVisc, int32 InPressureIterations,
+	int32 InDenIndex, int32 InPresIndex, float InDissipation,  
+	float InVorticityStrength, float InVisc, int32 InPressureIterations,
 	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
 	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
 	const TArray<FFluidInteractionForceSource>& InInteractionForceSources, int32& OutVelIndex, int32& OutDenIndex,
@@ -675,13 +652,7 @@ void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& R
 	   InVelIndex,
 	   InDenIndex,
 	   InPresIndex,
-	   InDissipation,
-	   InCurlNoiseTexture,
-	   InSimulationTime,
-	   InCurlSiumlationTiling,
-	   InCurlSimulationSpeed,
-	   InCurlVelocityStrength,
-	   InCurlDensityMaskScale,
+	   InDissipation,  
 	   InVorticityStrength,
 	   InVisc,
 	   InPressureIterations,
@@ -701,9 +672,8 @@ void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& R
 
 void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
-	int32 InDenIndex, int32 InPresIndex, float InDissipation, FTextureRHIRef InCurlNoiseTexture,
-	float InSimulationTime, float InCurlSiumlationTiling, float InCurlSimulationSpeed, float InCurlVelocityStrength,
-	float InCurlDensityMaskScale, float InVorticityStrength, float InVisc, int32 InPressureIterations,
+	int32 InDenIndex, int32 InPresIndex, float InDissipation, 
+	float InVorticityStrength, float InVisc, int32 InPressureIterations,
 	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
 	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
 	const TArray<FFluidInteractionForceSource>& InInteractionForceSources, int32& OutVelIndex, int32& OutDenIndex,
@@ -724,21 +694,7 @@ void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
 
 	FRDGTextureRef BlackFallback =
 		GSystemTextures.GetBlackDummy(GraphBuilder);
-
-	TRefCountPtr<IPooledRenderTarget> CurlNoisePooledRT;
-	FRDGTextureRef CurlNoise = BlackFallback;
-
-	if (InCurlNoiseTexture)
-	{
-		CurlNoisePooledRT = CreateRenderTarget(
-			InCurlNoiseTexture,
-			TEXT("FluidCurlNoise"));
-
-		CurlNoise = GraphBuilder.RegisterExternalTexture(
-			CurlNoisePooledRT,
-			TEXT("FluidCurlNoise"));
-	}
-
+   
 	TRefCountPtr<IPooledRenderTarget> BaseDensityNoisePooledRT;
 	FRDGTextureRef BaseDensityNoise = BlackFallback;
 
@@ -889,17 +845,7 @@ void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
 
 	    Params->DeltaTime = DeltaTime;
 	    Params->Dissipation = InDissipation;
-
-	    // 현재는 일반 RHI texture parameter로 유지한 상태입니다.
-	    Params->CurlNoiseTexture = CurlNoise;
-	    Params->CurlNoiseSampler =
-	        TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Clamp>::GetRHI();
-	    Params->Time = InSimulationTime;
-	    Params->CurlSimulationTiling = InCurlSiumlationTiling;
-	    Params->CurlSimulationSpeed = InCurlSimulationSpeed;
-	    Params->CurlVelocityStrength = InCurlVelocityStrength;
-	    Params->CurlDensityMaskScale = InCurlDensityMaskScale;
-
+  
 	    const uint32 SourceCount = FMath::Min(
 	        InInteractionForceSources.Num(),
 	        MAX_FLUID_INTERACTION_FORCE_SOURCE);

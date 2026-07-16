@@ -14,9 +14,6 @@ Texture2D HeightCurveTexture;
 SamplerState SceneColorSampler;
 SamplerState SceneDepthSampler;
 SamplerState HeightCurveSampler;
- 
-Texture2D ShapeNoiseTexture;
-SamplerState ShapeNoiseSampler;
 
 // Stable Fluid Results
 Texture2D DensityTexture;
@@ -44,8 +41,7 @@ float HeightFalloff;
 // Adaptive Height Attenuation
 float HeightFadeStartRatio;
 float HeightFadeStrength;
-
-
+ 
 // Fog Parameters
 float FogDensityMultiplier; 
 float AbsorptionScale;
@@ -68,8 +64,7 @@ static const int HEIGHT_MODE_CURVELUT = 2;
 
 
 // self - shadowing param 
-float3 SelfShadowLightDirection;
-float3 SelfShadowLightColor;
+float3 SelfShadowLightDirection; 
 float SelfShadowLightIntensity;
 float SelfShadowDensityScale;
 int SelfShadowStepCount;
@@ -312,9 +307,7 @@ float FBM2D(float2 P)
 
 float SampleExtrudedShapedDensity(float2 SimUV)
 {
-    const float DensityNormalize = 0.007f;
-    const float NoiseTiling = 1.0f;
-    const float NoiseStrength = 0.5f;
+    const float DensityNormalize = 0.007f; 
     const float Threshold = 0.01f;
     const float Softness = 0.10f;
     
@@ -326,18 +319,7 @@ float SampleExtrudedShapedDensity(float2 SimUV)
         return 0.0f;
     }
 
-    //float LargeShape = FBM2D(SimUV * LargeNoiseTiling);
-    //float DetailShape = FBM2D(SimUV * DetailNoiseTiling + 19.37f);
-    
-    float Noise = ShapeNoiseTexture.SampleLevel(
-        ShapeNoiseSampler,
-        SimUV * NoiseTiling,
-        0.0f
-    ).r;
-
-    float Shape = lerp(1.0f - NoiseStrength, 1.0f, Noise); // [1.0f - noiseStrength, 1.0f] 에 분포 
-    float Density = Coverage  * Shape; // Coverage * Shape를 통해서 Density 재구성
-
+    float Density = Coverage;
     float Mask = smoothstep(Threshold, Threshold + Softness, Density);
  
     return Density * Mask;
