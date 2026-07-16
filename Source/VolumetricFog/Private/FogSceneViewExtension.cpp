@@ -54,7 +54,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	FRDGBuilder& GraphBuilder = *InParameters.GraphBuilder;
 	const FViewInfo& View = *InParameters.View;
 
-	// Read Write를 동시에 할 수 없으니, SceneColor 복사
+ 	// Create Render Target using Scene Color 
 	FScreenPassRenderTarget FogOutput =
 		FScreenPassRenderTarget::CreateFromInput(
 			GraphBuilder,
@@ -166,7 +166,7 @@ void FFogSceneViewExtension::RenderFog_RenderThread(FPostOpaqueRenderParameters&
 	{ 
 		RDG_EVENT_SCOPE_STAT(GraphBuilder, VFF_FogRayMarchCopy, "VFF_FogRayMarchCopy");
 		RDG_GPU_STAT_SCOPE(GraphBuilder, VFF_FogRayMarchCopy);
-		AddCopyTexturePass(GraphBuilder, FogOutput.Texture,		SceneColor, CopyInfo);
+		AddCopyTexturePass(GraphBuilder, FogOutput.Texture,SceneColor, CopyInfo);
 	}
 
 }

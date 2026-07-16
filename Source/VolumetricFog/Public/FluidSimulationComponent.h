@@ -25,14 +25,7 @@ struct FFluidResources
 	FTextureRHIRef Pressure[2];
 	FTextureRHIRef Divergence; 
 	FTextureRHIRef Vorticity;
-	FTextureRHIRef TempVelocity;
-
-    FShaderResourceViewRHIRef VelocitySRV[2];
-    FShaderResourceViewRHIRef DensitySRV[2];
-    FShaderResourceViewRHIRef PressureSRV[2];
-    FShaderResourceViewRHIRef DivergenceSRV;
-    FShaderResourceViewRHIRef VorticitySRV;
-    FShaderResourceViewRHIRef TempVelocitySRV;
+	FTextureRHIRef TempVelocity; 
 
 	/** Cached Texture */
 	TRefCountPtr<IPooledRenderTarget> VelocityPooledRT[2];
@@ -40,14 +33,7 @@ struct FFluidResources
 	TRefCountPtr<IPooledRenderTarget> PressurePooledRT[2];
 	TRefCountPtr<IPooledRenderTarget> DivergencePooledRT;
 	TRefCountPtr<IPooledRenderTarget> VorticityPooledRT;
-	TRefCountPtr<IPooledRenderTarget> TempVelocityPooledRT;
-	
-    FUnorderedAccessViewRHIRef VelocityUAV[2];
-    FUnorderedAccessViewRHIRef DensityUAV[2];
-    FUnorderedAccessViewRHIRef PressureUAV[2];
-    FUnorderedAccessViewRHIRef DivergenceUAV;
-    FUnorderedAccessViewRHIRef VorticityUAV;
-    FUnorderedAccessViewRHIRef TempVelocityUAV;
+	TRefCountPtr<IPooledRenderTarget> TempVelocityPooledRT; 
     
 	int32 Resolution = 0;
 	bool bInitialize = false;
@@ -291,36 +277,7 @@ private:
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources;
 	
 	TSharedPtr<FFogSceneViewExtension, ESPMode::ThreadSafe> FogExtension;
-	float AccumulatedTime = 0.f;
-
-	static void ExecuteSimulation(
-		FRHICommandListImmediate& RHICmdList,
-		TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources,
-		float DeltaTime,
-	 	int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
-	 	// 시뮬레이션 파라미터들
-	 	float InDissipation,
-		FTextureRHIRef InCurlNoiseTexture,
-		float InSimulationTime,
-		float InCurlSiumlationTiling,
-		float InCurlSimulationSpeed,
-		float InCurlVelocityStrength,
-		float InCurlDensityMaskScale,
-	 	float InVorticityStrength,
-	 	float InVisc,
-	 	int32 InPressureIterations,
-	 	// Fog Generation Use Noise
-	 	bool bInEnableDensityMaintenance,
-		FTextureRHIRef InBaseDensityNoiseTexture,
-		float InBaseDensityTarget,
-		float InBaseDensityRecoverySpeed,
-		float InBaseDensityDeadbandRatio,
-		float InBaseDensityNoiseRepeat,
-		// Interaction Force
-		const TArray<FFluidInteractionForceSource>& InInteractionForceSources,
-	 	// 반환용
-	 	int32& OutVelIndex, int32& OutDenIndex, int32& OutPresIndex
-	 	);
+	float AccumulatedTime = 0.f; 
 	
 	static void ExecuteSimulationRDG(
 	FRHICommandListImmediate& RHICmdList,
