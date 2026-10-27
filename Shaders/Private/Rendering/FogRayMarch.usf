@@ -481,7 +481,7 @@ void IntegrateRay(
     
     // 밴딩 완화 
     float Jitter = (InterleavedGradientNoise(PixelPos) - 0.5f) * StepSize;
-    float T = tStart;// + Jitter;
+    float T = tStart + Jitter;
     
     //float T = tStart;
     
