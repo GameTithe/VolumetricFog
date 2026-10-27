@@ -183,6 +183,18 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	auto Resources = FluidResources;
 	float DT = DeltaTime;
 	float Diss = Dissipation;
+	const bool bIdleFlowEnabled = bEnableIdleFlow;
+	const FVector2D IdleDirection = IdleFlowDirection;
+	const float IdleSpeed = IdleFlowSpeed;
+	const float IdleResponseStrength = IdleFlowResponseStrength;
+	FVector2f IdleTargetVelocity = FVector2f::ZeroVector;
+	if (bIdleFlowEnabled && IdleSpeed > 0.0f && !IdleDirection.IsNearlyZero())
+	{
+		const FVector2D NormalizedIdleDirection = IdleDirection.GetSafeNormal();
+		IdleTargetVelocity = FVector2f(
+			static_cast<float>(NormalizedIdleDirection.X * IdleSpeed),
+			static_cast<float>(-NormalizedIdleDirection.Y * IdleSpeed));
+	}
 	float Vortiy = VorticityStrengthParam;
 	float Visc = Viscosity;
 	int32 PresItr = PressureIterations; 
@@ -208,8 +220,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 	
 	ENQUEUE_RENDER_COMMAND(FFluidSimluationStep)(
 	[ Resources, Ext, Snapshot, 
-		DT, Diss,  
-        bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
+		DT, Diss, bIdleFlowEnabled, IdleTargetVelocity, IdleResponseStrength,
+         bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
         InteractionForceSources,
         Vortiy, Visc, PresItr](FRHICommandListImmediate& RHICmdList) mutable 
 	{
@@ -233,8 +245,8 @@ void UFluidSimulationComponent::TickComponent(float DeltaTime, enum ELevelTick T
 		// 시뮬레이션
 		UFluidSimulationComponent::ExecuteSimulationRDG(RHICmdList, Resources,
 			DT,InVelIdx, InDenIdx, InPressIdx,
-					   Diss, 
-                       Vortiy, Visc, PresItr,
+					   Diss, bIdleFlowEnabled, IdleTargetVelocity, IdleResponseStrength,
+                        Vortiy, Visc, PresItr,
                        bDensityMaintenance, BaseDensityNoiseTexRHI,DensityTarget,DensityRecoverySpeed, DensityDeadbandRatio, DensityNoiseRepeat,
                        InteractionForceSources,
                        OutVelIdx, OutDenIdx, OutPrsIdx); 
@@ -637,6 +649,7 @@ void UFluidSimulationComponent::ReleaseHeightCurveFromFogExtension()
 void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& RHICmdList,
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
 	int32 InDenIndex, int32 InPresIndex, float InDissipation,  
+	bool bInEnableIdleFlow, FVector2f InIdleFlowTargetVelocity, float InIdleFlowResponseStrength,
 	float InVorticityStrength, float InVisc, int32 InPressureIterations,
 	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
 	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
@@ -653,6 +666,9 @@ void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& R
 	   InDenIndex,
 	   InPresIndex,
 	   InDissipation,  
+	   bInEnableIdleFlow,
+	   InIdleFlowTargetVelocity,
+	   InIdleFlowResponseStrength,
 	   InVorticityStrength,
 	   InVisc,
 	   InPressureIterations,
@@ -673,6 +689,7 @@ void UFluidSimulationComponent::ExecuteSimulationRDG(FRHICommandListImmediate& R
 void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources, float DeltaTime, int32 InVelIndex,
 	int32 InDenIndex, int32 InPresIndex, float InDissipation, 
+	bool bInEnableIdleFlow, FVector2f InIdleFlowTargetVelocity, float InIdleFlowResponseStrength,
 	float InVorticityStrength, float InVisc, int32 InPressureIterations,
 	bool bInEnableDensityMaintenance, FTextureRHIRef InBaseDensityNoiseTexture, float InBaseDensityTarget,
 	float InBaseDensityRecoverySpeed, float InBaseDensityDeadbandRatio, float InBaseDensityNoiseRepeat,
@@ -845,6 +862,9 @@ void UFluidSimulationComponent::AddSimulationPasses(FRDGBuilder& GraphBuilder,
 
 	    Params->DeltaTime = DeltaTime;
 	    Params->Dissipation = InDissipation;
+	    Params->IdleFlowEnabled = bInEnableIdleFlow ? 1u : 0u;
+	    Params->IdleFlowTargetVelocity = InIdleFlowTargetVelocity;
+	    Params->IdleFlowResponseStrength = InIdleFlowResponseStrength;
   
 	    const uint32 SourceCount = FMath::Min(
 	        InInteractionForceSources.Num(),

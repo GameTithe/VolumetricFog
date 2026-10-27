@@ -9,6 +9,10 @@ float DeltaTime;
 
 float Dissipation;  //밀도 감쇠
 
+uint IdleFlowEnabled;
+float2 IdleFlowTargetVelocity;
+float IdleFlowResponseStrength;
+
 // Interaction
 #define MAX_FLUID_INTERACTION_FORCE_SOURCE 8
 uint InteractionForceSourceCount;
@@ -32,6 +36,12 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
     
     float2 Vel = VelocityInput[DTid.xy];
     float Density = DensityInput[DTid.xy];
+
+    if (IdleFlowEnabled != 0 && dot(IdleFlowTargetVelocity, IdleFlowTargetVelocity) > 1e-8f)
+    {
+        float ResponseAlpha = saturate(1.0f - exp(-max(IdleFlowResponseStrength, 0.0f) * max(DeltaTime, 0.0f)));
+        Vel = lerp(Vel, IdleFlowTargetVelocity, ResponseAlpha);
+    }
     
     //new school 
     uint SourceCount = min(InteractionForceSourceCount, (uint)MAX_FLUID_INTERACTION_FORCE_SOURCE);

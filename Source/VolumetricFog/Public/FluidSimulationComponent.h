@@ -102,6 +102,18 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Simulation", meta = (ClampMin = "0.9", ClampMax = "1.0"))
 	float Dissipation = 0.993f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Idle Flow")
+	bool bEnableIdleFlow = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Idle Flow")
+	FVector2D IdleFlowDirection = FVector2D::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Idle Flow", meta = (ClampMin = "0.0"))
+	float IdleFlowSpeed = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid|Idle Flow", meta = (ClampMin = "0.0"))
+	float IdleFlowResponseStrength = 1.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fog|Density", meta =
 	(ClampMin = "0.0"))
@@ -260,9 +272,12 @@ private:
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources,
 	float DeltaTime,
 	 int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
-	 // 시뮬레이션 파라미터들
-	 float InDissipation,  
-	 float InVorticityStrength,
+		// 시뮬레이션 파라미터들
+		 float InDissipation,  
+		bool bInEnableIdleFlow,
+		FVector2f InIdleFlowTargetVelocity,
+		float InIdleFlowResponseStrength,
+		 float InVorticityStrength,
 	 float InVisc,
 	 int32 InPressureIterations,
 	 // Fog Generation Use Noise
@@ -283,9 +298,12 @@ private:
 	TSharedPtr<FFluidResources, ESPMode::ThreadSafe> FluidResources,
 	float DeltaTime,
 	 int32 InVelIndex, int32 InDenIndex, int32 InPresIndex,
-	 // 시뮬레이션 파라미터들
-	 float InDissipation,  
-	 float InVorticityStrength,
+		// 시뮬레이션 파라미터들
+		 float InDissipation,  
+		bool bInEnableIdleFlow,
+		FVector2f InIdleFlowTargetVelocity,
+		float InIdleFlowResponseStrength,
+		 float InVorticityStrength,
 	 float InVisc,
 	 int32 InPressureIterations,
 	 // Fog Generation Use Noise

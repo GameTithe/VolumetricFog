@@ -142,6 +142,9 @@ public:
 
 		SHADER_PARAMETER(float, DeltaTime)
 		SHADER_PARAMETER(float, Dissipation) 
+		SHADER_PARAMETER(uint32, IdleFlowEnabled)
+		SHADER_PARAMETER(FVector2f, IdleFlowTargetVelocity)
+		SHADER_PARAMETER(float, IdleFlowResponseStrength)
 		
 		// Interaction Params
 		SHADER_PARAMETER(uint32, InteractionForceSourceCount) 
